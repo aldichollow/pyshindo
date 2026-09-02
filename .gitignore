@@ -13,3 +13,5 @@ site/
 *.html
 *.csv
 .DS_Store
+_tmp/
+_reports/
