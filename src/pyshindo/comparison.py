@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 from .measured import calculate_measured_intensity
 from .models import IntensityComparisonResult
@@ -16,8 +17,8 @@ _COMMON_OPTION_NAMES = frozenset(
 
 def _validate_algorithm_options(
     name: str,
-    options: Mapping[str, object] | None,
-) -> dict[str, object]:
+    options: Mapping[str, Any] | None,
+) -> dict[str, Any]:
     if options is None:
         return {}
     forbidden = _COMMON_OPTION_NAMES.intersection(options)
@@ -34,8 +35,8 @@ def compare_intensity_methods(
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
     component_axis: int = -1,
     allow_fewer_components: bool = False,
-    measured_options: Mapping[str, object] | None = None,
-    realtime_options: Mapping[str, object] | None = None,
+    measured_options: Mapping[str, Any] | None = None,
+    realtime_options: Mapping[str, Any] | None = None,
 ) -> IntensityComparisonResult:
     """Calculate the FFT reference and real-time approximation for one record.
 
@@ -43,12 +44,12 @@ def compare_intensity_methods(
     real-time intensity. Algorithm-specific options may be supplied through the
     two mappings; common input conventions cannot be overridden there.
     """
-    measured_kwargs: dict[str, object] = {
+    measured_kwargs: dict[str, Any] = {
         "component_axis": component_axis,
         "allow_fewer_components": allow_fewer_components,
         "retain_intermediates": False,
     }
-    realtime_kwargs: dict[str, object] = {
+    realtime_kwargs: dict[str, Any] = {
         "component_axis": component_axis,
         "allow_fewer_components": allow_fewer_components,
         "retain_filtered": False,

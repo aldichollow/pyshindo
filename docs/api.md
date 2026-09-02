@@ -2,6 +2,24 @@
 
 `pyshindo` トップレベル名前空間の主な関数・クラスの早見表です。各関数のパラメータの詳細はdocstring(`help(...)`)を参照してください。値の意味やアルゴリズムの背景は[`docs/algorithm.md`](algorithm.md) を参照してください。
 
+## 最小の完全な例
+
+自前の加速度データが無くてもこのまま動きます。
+
+```python
+from pyshindo import calculate_measured_intensity, synthetic_three_component_motion
+
+# 形状 (サンプル数, 3) の3成分加速度。実データがあれば代わりにそれを渡してください。
+acceleration_gal = synthetic_three_component_motion(sampling_rate_hz=100.0, duration_s=30.0)
+
+result = calculate_measured_intensity(acceleration_gal, sampling_rate_hz=100.0, unit="gal")
+
+print(result.intensity)          # 4.8 (気象庁の1桁表示値)
+print(result.scale.japanese)     # "5弱"
+```
+
+より詳しい使用例は[`examples/`](../examples/)を参照してください。
+
 ## 計測震度(FFT参照計算)
 
 ```python

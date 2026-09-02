@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import time
 import warnings
-from typing import Final
+from typing import Any, Final
 
 import numpy as np
 from scipy.signal import sosfilt
@@ -476,7 +476,7 @@ def realtime_intensity(
     *,
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
     reported: bool = False,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> FloatArray:
     """Return only the sample-aligned real-time intensity series."""
     result = calculate_realtime_intensity(

@@ -8,6 +8,7 @@ from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
+from numpy.exceptions import AxisError
 from scipy import signal as scipy_signal
 
 from .units import ArrayLike, FloatArray
@@ -39,7 +40,7 @@ def vector_resultant(acceleration: npt.ArrayLike, *, component_axis: int = -1) -
         raise ValueError("acceleration contains non-finite values.")
     try:
         return np.linalg.norm(values, axis=component_axis)
-    except np.AxisError as exc:
+    except AxisError as exc:
         raise ValueError(f"component_axis={component_axis} is invalid for {values.shape}.") from exc
 
 
