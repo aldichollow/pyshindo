@@ -11,11 +11,14 @@ from pyshindo._order import RollingKthLargest
 def _check_against_brute_force(window_size: int, k: int, values: list[float]) -> None:
     rolling = RollingKthLargest(window_size, k)
     history: deque[float] = deque(maxlen=window_size)
+    storage_limit = 2 * window_size + 64
     for value in values:
         history.append(value)
         actual = rolling.update(value)
         expected = None if len(history) < k else sorted(history, reverse=True)[k - 1]
         assert actual == expected
+        # The lazy-deletion heaps must stay bounded, not grow with the stream.
+        assert len(rolling._top) + len(rolling._rest) <= storage_limit
 
 
 @pytest.mark.parametrize(

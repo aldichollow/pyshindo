@@ -267,7 +267,8 @@ def lowrate_stability_lower_bounds(
         p.lowpass_2_hz,
         p.lowpass_3_hz,
     )
-    return tuple(0.25 - 1.0 / (2.0 * np.pi * frequency * dt) ** 2 for frequency in frequencies)
+    a, b, c, d = (0.25 - 1.0 / (2.0 * np.pi * frequency * dt) ** 2 for frequency in frequencies)
+    return (a, b, c, d)
 
 
 def lowrate_gamma_stability_margins(
@@ -278,10 +279,11 @@ def lowrate_gamma_stability_margins(
     """Return selected denominator gamma minus each disclosed stability bound."""
     _validate_gamma_set(gammas)
     lower = lowrate_stability_lower_bounds(sampling_rate_hz, parameters)
-    return tuple(
+    a, b, c, d = (
         gamma - bound
         for gamma, bound in zip(gammas.denominator_values, lower, strict=True)
     )
+    return (a, b, c, d)
 
 
 def _normalize_section(

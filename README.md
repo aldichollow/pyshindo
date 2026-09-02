@@ -2,9 +2,11 @@
 
 ## 概要
 
-`pyshindo` は加速度記録から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式・Kunugi論文・関連特許(JP4229337B2/JP5946067B2/JP7681907B2)を根拠に、係数を式から都度導出する実装になっています(固定係数表の丸写しではありません)。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md) にあります。
+`pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式・Kunugi論文・関連特許(JP4229337B2/JP5946067B2/JP7681907B2)を根拠に、係数を式から都度導出する実装になっています(固定係数表の丸写しではありません)。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md) にあります。
 
 本パッケージは個人が趣味として開発しているものです。計算結果の正確性・完全性を保証するものではありませんので、ご利用は自己判断・自己責任でお願いします。
+
+---
 
 `pyshindo` is a small Python package for calculating Japanese instrumental seismic intensity from acceleration records. It keeps the complete-record FFT calculation separate from causal real-time approximations, so the meaning of both results remains explicit.
 
@@ -25,15 +27,23 @@ Relevant real-time algorithms are associated with patent documents. Read [PATENT
 
 ## Installation
 
-From a checkout:
+Directly from GitHub:
+
+```bash
+python -m pip install git+https://github.com/aldichollow/pyshindo.git
+```
+
+From a local checkout, editable:
 
 ```bash
 python -m pip install -e .
 ```
 
-Install the optional Plotly figures:
+Either way, add the optional Plotly figures with the `plot` extra:
 
 ```bash
+python -m pip install "pyshindo[plot] @ git+https://github.com/aldichollow/pyshindo.git"
+# or, from a checkout:
 python -m pip install -e ".[plot]"
 ```
 
@@ -118,11 +128,20 @@ Plotly figures use a restrained package theme. Intensity colors 1 through 7 foll
 - [API reference (Japanese)](docs/api.md)
 - [Observed data I/O (Japanese)](docs/data.md)
 
+## Development
+
+```bash
+python -m pip install -e ".[dev,plot]"
+pytest
+ruff check .
+mypy src/pyshindo
+```
+
 ## Primary references
 
 - Japan Meteorological Agency, "Calculation of instrumental seismic intensity."
-- Kunugi, Aoi, and Nakamura (2008), *A real-time processing method of seismic intensity*, DOI: 10.4294/zisin.60.243.
-- Kunugi, Aoi, and Nakamura (2013), *An improved approximation filter for the real-time calculation of seismic intensity*, DOI: 10.4294/zisin.65.223.
+- Kunugi, Aoi, and Nakamura (2008), _A real-time processing method of seismic intensity_, DOI: 10.4294/zisin.60.243.
+- Kunugi, Aoi, and Nakamura (2013), _An improved approximation filter for the real-time calculation of seismic intensity_, DOI: 10.4294/zisin.65.223.
 - JP4229337B2 / JP5946067B2 / JP7681907B2 -- see [PATENTS.md](PATENTS.md).
 
 ---

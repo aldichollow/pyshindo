@@ -18,6 +18,7 @@ def test_plotting_functions_return_figures() -> None:
     values = synthetic_three_component_motion(duration_s=3.0, noise_std_gal=0.0)
     measured = calculate_measured_intensity(values)
     realtime = calculate_realtime_intensity(values)
+    assert measured.resultant_acceleration_gal is not None
     figures = [
         acceleration_figure(values, 100.0),
         filter_response_figure(100.0, points=128),

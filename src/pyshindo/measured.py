@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import time
+from typing import Any
 
 import numpy as np
 
@@ -131,7 +132,7 @@ def measured_intensity(
     *,
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
     reported: bool = True,
-    **kwargs: object,
+    **kwargs: Any,
 ) -> float:
     """Return only the scalar instrumental intensity for a complete record.
 

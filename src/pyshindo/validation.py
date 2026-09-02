@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import numpy.typing as npt
+from numpy.exceptions import AxisError
 
 from .exceptions import (
     InvalidAccelerationError,
@@ -81,7 +82,7 @@ def as_acceleration_array(
     elif array.ndim == 2:
         try:
             array = np.moveaxis(array, component_axis, -1)
-        except np.AxisError as exc:
+        except AxisError as exc:
             raise InvalidAccelerationError(
                 f"component_axis={component_axis} is invalid for shape {array.shape}."
             ) from exc
