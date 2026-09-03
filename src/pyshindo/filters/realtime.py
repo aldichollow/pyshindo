@@ -31,8 +31,14 @@ import numpy.typing as npt
 from scipy.signal import sosfreqz
 
 from ..exceptions import UnstableFilterError
-from ..models import FrequencyResponse, RecursiveFilterDesign
+from ..models import FilterStage, FrequencyResponse, RecursiveFilterDesign
 from ..units import FloatArray
+
+_GAIN_STAGE_NAME = "gain"
+
+
+def _gain_stage(gain: float) -> FilterStage:
+    return FilterStage(_GAIN_STAGE_NAME, None, np.array([gain, 0.0, 0.0, 1.0, 0.0, 0.0]))
 
 
 class RealtimeFilter(StrEnum):
@@ -367,6 +373,28 @@ def _kunugi_2008_sos(sampling_rate_hz: float, parameters: Kunugi2008Parameters) 
     return sos
 
 
+def _kunugi_2008_stages(
+    sampling_rate_hz: float,
+    parameters: Kunugi2008Parameters,
+) -> list[FilterStage]:
+    """Return the five named analog factors behind :func:`_kunugi_2008_sos`.
+
+    Each stage is computed independently with the same per-factor transform
+    used to build the combined design, so cascading all of them (plus the
+    gain stage) reproduces the combined ``sos`` exactly.
+    """
+    dt = 1.0 / sampling_rate_hz
+    f0, f1, f2 = parameters.f0_hz, parameters.f1_hz, parameters.f2_hz
+    return [
+        FilterStage("period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
+        FilterStage("7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
+        FilterStage("7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
+        FilterStage("7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+        FilterStage("high-cut", f2, _boxer_thaler_lowpass(f2, parameters.damping, dt)),
+        _gain_stage(parameters.gain),
+    ]
+
+
 def _paired_base_section(f0_hz: float, f1_hz: float, dt: float) -> FloatArray:
     omega1 = 2.0 * np.pi * f0_hz
     omega2 = 2.0 * np.pi * f1_hz
@@ -482,6 +510,57 @@ def _kunugi_2012_sos(sampling_rate_hz: float, parameters: Kunugi2012Parameters) 
     return sos
 
 
+def _kunugi_2012_stages(
+    sampling_rate_hz: float,
+    parameters: Kunugi2012Parameters,
+) -> list[FilterStage]:
+    """Return the eight named analog factors behind :func:`_kunugi_2012_sos`.
+
+    Commonly labeled A1-A8 in secondary descriptions of Kunugi et al. (2013);
+    not independently verified here against the primary journal text. Each
+    stage is computed independently with the same per-factor transform used
+    to build the combined design (``_paired_base_section`` and
+    ``_paired_half_order_section`` are numerically identical to combining
+    two independent first-order stages -- see the module's coefficient
+    regression tests), so cascading all eight stages plus the gain stage
+    reproduces the combined ``sos`` exactly.
+    """
+    dt = 1.0 / sampling_rate_hz
+    f0, f1 = parameters.f0_hz, parameters.f1_hz
+    fc, lp1, lp2, lp3 = (
+        parameters.correction_hz,
+        parameters.lowpass_1_hz,
+        parameters.lowpass_2_hz,
+        parameters.lowpass_3_hz,
+    )
+    return [
+        FilterStage("A1: period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
+        FilterStage("A2: 7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
+        FilterStage("A3: 7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
+        FilterStage("A4: 7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+        FilterStage(
+            "A5: correction",
+            fc,
+            _correction_section(
+                fc,
+                parameters.correction_numerator_damping,
+                parameters.correction_denominator_damping,
+                dt,
+            ),
+        ),
+        FilterStage(
+            "A6: low-pass 1", lp1, _boxer_thaler_lowpass(lp1, parameters.lowpass_1_damping, dt)
+        ),
+        FilterStage(
+            "A7: low-pass 2", lp2, _boxer_thaler_lowpass(lp2, parameters.lowpass_2_damping, dt)
+        ),
+        FilterStage(
+            "A8: low-pass 3", lp3, _boxer_thaler_lowpass(lp3, parameters.lowpass_3_damping, dt)
+        ),
+        _gain_stage(parameters.gain),
+    ]
+
+
 def _kunugi_lowrate_sos(
     sampling_rate_hz: float,
     parameters: Kunugi2012Parameters,
@@ -529,6 +608,79 @@ def _kunugi_lowrate_sos(
     return sos
 
 
+def _kunugi_lowrate_stages(
+    sampling_rate_hz: float,
+    parameters: Kunugi2012Parameters,
+    gammas: LowRateGammaSet,
+) -> list[FilterStage]:
+    """Return the eight named analog factors behind :func:`_kunugi_lowrate_sos`.
+
+    A1-A4 are shared with :func:`_kunugi_2012_stages`; A5-A8 use the
+    generalized, gamma-parameterized sections instead of the fixed
+    Boxer-Thaler form.
+    """
+    dt = 1.0 / sampling_rate_hz
+    f0, f1 = parameters.f0_hz, parameters.f1_hz
+    fc, lp1, lp2, lp3 = (
+        parameters.correction_hz,
+        parameters.lowpass_1_hz,
+        parameters.lowpass_2_hz,
+        parameters.lowpass_3_hz,
+    )
+    return [
+        FilterStage("A1: period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
+        FilterStage("A2: 7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
+        FilterStage("A3: 7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
+        FilterStage("A4: 7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+        FilterStage(
+            "A5: correction",
+            fc,
+            _generalized_correction_section(
+                fc,
+                parameters.correction_numerator_damping,
+                parameters.correction_denominator_damping,
+                gammas.correction_numerator,
+                gammas.correction_denominator,
+                dt,
+            ),
+        ),
+        FilterStage(
+            "A6: low-pass 1",
+            lp1,
+            _generalized_lowpass_section(
+                lp1,
+                parameters.lowpass_1_damping,
+                gammas.lowpass_1_numerator,
+                gammas.lowpass_1_denominator,
+                dt,
+            ),
+        ),
+        FilterStage(
+            "A7: low-pass 2",
+            lp2,
+            _generalized_lowpass_section(
+                lp2,
+                parameters.lowpass_2_damping,
+                gammas.lowpass_2_numerator,
+                gammas.lowpass_2_denominator,
+                dt,
+            ),
+        ),
+        FilterStage(
+            "A8: low-pass 3",
+            lp3,
+            _generalized_lowpass_section(
+                lp3,
+                parameters.lowpass_3_damping,
+                gammas.lowpass_3_numerator,
+                gammas.lowpass_3_denominator,
+                dt,
+            ),
+        ),
+        _gain_stage(parameters.gain),
+    ]
+
+
 def _max_pole_radius(sos: npt.NDArray[np.float64]) -> float:
     radii = [np.max(np.abs(np.roots(section[3:]))) for section in sos]
     return float(max(radii, default=0.0))
@@ -572,6 +724,7 @@ def _finish_design(
     parameters: Kunugi2008Parameters | Kunugi2012Parameters,
     sos: FloatArray,
     gamma_parameters: dict[str, float],
+    stages: list[FilterStage],
     *,
     check_stability: bool,
     stability_tolerance: float,
@@ -594,6 +747,7 @@ def _finish_design(
         characteristic_frequencies_hz=_characteristic_frequencies(selected, parameters),
         max_pole_radius=radius,
         stable=stable,
+        stages=tuple(stages),
     )
 
 
@@ -636,6 +790,7 @@ def design_realtime_filter(
             parameters,
             _kunugi_2008_sos(rate, parameters),
             {},
+            _kunugi_2008_stages(rate, parameters),
             check_stability=check_stability,
             stability_tolerance=stability_tolerance,
         )
@@ -655,6 +810,7 @@ def design_realtime_filter(
 
     if selected is RealtimeFilter.KUNUGI_2012:
         sos = _kunugi_2012_sos(rate, parameters)
+        stages = _kunugi_2012_stages(rate, parameters)
         gamma_parameters: dict[str, float] = {}
     else:
         policy = LowRateGammaPolicy.parse(lowrate_gamma_policy)
@@ -671,6 +827,7 @@ def design_realtime_filter(
         else:
             gammas = lowrate_gammas
         sos = _kunugi_lowrate_sos(rate, parameters, gammas)
+        stages = _kunugi_lowrate_stages(rate, parameters, gammas)
         gamma_parameters = {
             f"gamma_{name}": float(value) for name, value in asdict(gammas).items()
         }
@@ -681,9 +838,27 @@ def design_realtime_filter(
         parameters,
         sos,
         gamma_parameters,
+        stages,
         check_stability=check_stability,
         stability_tolerance=stability_tolerance,
     )
+
+
+def _resolve_frequency_grid(
+    nyquist_hz: float,
+    frequency_hz: npt.ArrayLike | None,
+    points: int,
+) -> FloatArray:
+    if points < 2:
+        raise ValueError("points must be at least two.")
+    if frequency_hz is None:
+        return np.linspace(0.0, nyquist_hz, points, endpoint=False)
+    frequency = np.asarray(frequency_hz, dtype=np.float64)
+    if np.any(~np.isfinite(frequency)) or np.any(frequency < 0.0):
+        raise ValueError("frequency_hz must be finite and non-negative.")
+    if np.any(frequency > nyquist_hz):
+        raise ValueError("frequency_hz exceeds the Nyquist frequency.")
+    return frequency
 
 
 def realtime_filter_response(
@@ -693,17 +868,31 @@ def realtime_filter_response(
     points: int = 4096,
 ) -> FrequencyResponse:
     """Evaluate a digital real-time filter at physical frequencies."""
-    if points < 2:
-        raise ValueError("points must be at least two.")
-    if frequency_hz is None:
-        frequency = np.linspace(0.0, design.nyquist_hz, points, endpoint=False)
-    else:
-        frequency = np.asarray(frequency_hz, dtype=np.float64)
-        if np.any(~np.isfinite(frequency)) or np.any(frequency < 0.0):
-            raise ValueError("frequency_hz must be finite and non-negative.")
-        if np.any(frequency > design.nyquist_hz):
-            raise ValueError("frequency_hz exceeds the Nyquist frequency.")
+    frequency = _resolve_frequency_grid(design.nyquist_hz, frequency_hz, points)
     _, response = sosfreqz(design.sos, worN=frequency, fs=design.sampling_rate_hz)
+    return FrequencyResponse(
+        frequency_hz=np.asarray(frequency, dtype=np.float64),
+        response=np.asarray(response, dtype=np.complex128),
+    )
+
+
+def filter_stage_response(
+    design: RecursiveFilterDesign,
+    stage: FilterStage,
+    frequency_hz: npt.ArrayLike | None = None,
+    *,
+    points: int = 4096,
+) -> FrequencyResponse:
+    """Evaluate one named stage of ``design`` on its own, at physical frequencies.
+
+    ``stage`` is normally one of ``design.stages``. The stage's own digital
+    response is evaluated in isolation (as a length-one SOS cascade), not the
+    combined design.
+    """
+    frequency = _resolve_frequency_grid(design.nyquist_hz, frequency_hz, points)
+    _, response = sosfreqz(
+        stage.sos.reshape(1, 6), worN=frequency, fs=design.sampling_rate_hz
+    )
     return FrequencyResponse(
         frequency_hz=np.asarray(frequency, dtype=np.float64),
         response=np.asarray(response, dtype=np.complex128),

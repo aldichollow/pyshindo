@@ -74,6 +74,7 @@ design_realtime_filter(sampling_rate_hz=100.0, *, filter_name=RealtimeFilter.AUT
                         lowrate_gamma_policy=LowRateGammaPolicy.PIECEWISE,
                         check_stability=True) -> RecursiveFilterDesign
 realtime_filter_response(design, frequency_hz=None) -> FrequencyResponse
+filter_stage_response(design, stage, frequency_hz=None) -> FrequencyResponse  # 1因子だけの特性
 jma_filter_response(frequency_hz) -> ndarray          # FFT参照フィルタの振幅応答
 jma_filter_components(frequency_hz) -> JMAFilterComponents  # 周期効果/ハイカット/ローカット別
 kunugi_2012_analog_amplitude(frequency_hz) -> ndarray  # 2012フィルタの連続時間近似
@@ -83,6 +84,8 @@ lowrate_gamma_stability_margins(sampling_rate_hz, gammas) -> tuple[float, ...]
 ```
 
 `RecursiveFilterDesign` は正規化されたSOS係数・極半径・安定性フラグを持ちます。`LowRateGammaPolicy`: `PIECEWISE`(既定、JP7681907B2の区分的テーブル) / `CONSTANT_ACCURATE`(γ=1/12、低レートでは不安定になり得る) / `CONSTANT_STABLE`(γ=1/4、任意周波数で安定)。
+
+`RecursiveFilterDesign.stages: tuple[FilterStage, ...]` には、結合済みSOSを構成する前の個別の解析的因子(名前・特性周波数・単体SOS)が入っています。`filter_stage_response()`で1因子ずつ、`pyshindo.plotting.filter_stages_figure(design)`でまとめて可視化できます。全因子を独立にカスケードした結果は結合済みの`.sos`と一致します。
 
 ## 震度値と震度階級
 
@@ -153,8 +156,8 @@ from pyshindo.io import parse_jma_text, parse_jma_bytes, read_jma_record, downlo
 ```python
 from pyshindo.plotting import (
     acceleration_figure, jma_filter_components_figure, filter_response_figure,
-    measured_result_figure, amplitude_duration_figure, realtime_result_figure,
-    intensity_comparison_figure,
+    filter_stages_figure, measured_result_figure, amplitude_duration_figure,
+    realtime_result_figure, intensity_comparison_figure,
 )
 ```
 

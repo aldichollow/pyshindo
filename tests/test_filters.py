@@ -120,3 +120,38 @@ def test_accuracy_constant_lowrate_policy_exposes_instability() -> None:
             filter_name=RealtimeFilter.JP7681907_LOWRATE,
             lowrate_gamma_policy=LowRateGammaPolicy.CONSTANT_ACCURATE,
         )
+
+
+@pytest.mark.parametrize(
+    ("filter_name", "sampling_rate_hz", "expected_stage_count"),
+    [
+        (RealtimeFilter.KUNUGI_2008, 100.0, 6),
+        (RealtimeFilter.KUNUGI_2012, 100.0, 9),
+        (RealtimeFilter.JP7681907_LOWRATE, 50.0, 9),
+    ],
+)
+def test_filter_stages_cascade_reproduces_combined_response(
+    filter_name: RealtimeFilter,
+    sampling_rate_hz: float,
+    expected_stage_count: int,
+) -> None:
+    from scipy.signal import sosfreqz
+
+    design = design_realtime_filter(sampling_rate_hz, filter_name=filter_name)
+    assert len(design.stages) == expected_stage_count
+    assert design.stages[-1].name == "gain"
+
+    stage_sos = np.vstack([stage.sos for stage in design.stages])
+    frequency = np.linspace(0.01, design.nyquist_hz * 0.99, 2000)
+    _, combined_response = sosfreqz(design.sos, worN=frequency, fs=sampling_rate_hz)
+    _, staged_response = sosfreqz(stage_sos, worN=frequency, fs=sampling_rate_hz)
+    np.testing.assert_allclose(staged_response, combined_response, rtol=0.0, atol=1e-9)
+
+
+def test_filter_stage_response_matches_its_own_row_in_the_combined_cascade() -> None:
+    from pyshindo.filters.realtime import filter_stage_response
+
+    design = design_realtime_filter(100.0, filter_name=RealtimeFilter.KUNUGI_2012)
+    gain_stage = design.stages[-1]
+    response = filter_stage_response(design, gain_stage, np.array([0.0, 1.0, 10.0]))
+    np.testing.assert_allclose(response.amplitude, gain_stage.sos[0], rtol=0.0, atol=1e-12)

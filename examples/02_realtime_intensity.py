@@ -72,3 +72,5 @@ while position < acceleration_gal.shape[0]:
 streamed_raw_array = np.concatenate(streamed_raw)
 np.testing.assert_allclose(streamed_raw_array, realtime.intensity_raw, equal_nan=True)
 print("Irregular chunk replay matches complete-chunk replay.")
+
+# %%
