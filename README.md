@@ -20,7 +20,8 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - The generalized low-sampling-rate filter disclosed in JP7681907B2.
 - Exact rolling order statistics for a 60-second real-time window without discretizing intensity into fixed-width bins.
 - Stateful chunk and single-sample APIs whose results are invariant to chunk boundaries.
-- Unit conversion, sampling diagnostics, PGA, preprocessing helpers, response inspection, JMA text-record parsing, and optional Plotly figures.
+- Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
+- Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
 
 Relevant real-time algorithms are associated with patent documents. Read [PATENTS.md](PATENTS.md) before distribution or operational use. The MIT license covers copyright in this source code and is not a patent-clearance opinion.

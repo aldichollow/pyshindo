@@ -33,6 +33,23 @@ class FrequencyResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class FilterStage:
+    """One named, individually inspectable component of a filter cascade.
+
+    ``sos`` is a single second-order-section row (shape ``(6,)``), in the same
+    normalized form as one row of :attr:`RecursiveFilterDesign.sos`: first-order
+    stages simply have zero for their second-order coefficients. Cascading every
+    stage of a design, in order, reproduces that design's combined response --
+    stages exist so each named component can be inspected or plotted on its own,
+    not as an alternative way to filter data.
+    """
+
+    name: str
+    characteristic_frequency_hz: float | None
+    sos: FloatArray
+
+
+@dataclass(frozen=True, slots=True)
 class RecursiveFilterDesign:
     """Second-order-section representation of a published approximation filter."""
 
@@ -43,6 +60,7 @@ class RecursiveFilterDesign:
     characteristic_frequencies_hz: tuple[float, ...]
     max_pole_radius: float
     stable: bool
+    stages: tuple[FilterStage, ...]
 
     @property
     def nyquist_hz(self) -> float:

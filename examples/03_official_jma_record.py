@@ -9,8 +9,7 @@ from pyshindo.plotting import acceleration_figure, measured_result_figure
 # %% Select the official JMA example record
 # The JMA calculation page identifies this Yonago record as measured intensity 5.1.
 record_url = (
-    "https://ds.data.jma.go.jp/eqev/data/kyoshin/jishin/"
-    "001006_tottori-seibu/dat/AA06EA01.csv"
+    "https://ds.data.jma.go.jp/eqev/data/kyoshin/jishin/001006_tottori-seibu/dat/AA06EA01.csv"
 )
 cache_path = Path(".cache/pyshindo/AA06EA01.csv")
 
@@ -48,3 +47,5 @@ result_figure = measured_result_figure(
     component_names=record.metadata.component_names,
 )
 result_figure.show()
+
+# %%

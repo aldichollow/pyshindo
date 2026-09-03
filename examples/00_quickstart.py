@@ -45,3 +45,5 @@ print(f"Real-time raw maximum:    {realtime.approximate_intensity_raw:.6f}")
 print(f"Real-time reported max:   {realtime.approximate_intensity:.1f}")
 raw_difference = measured.intensity_raw - realtime.approximate_intensity_raw
 print(f"Raw method difference:    {raw_difference:+.6f}")
+
+# %%

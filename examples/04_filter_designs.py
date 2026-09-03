@@ -11,7 +11,7 @@ from pyshindo import (
     published_lowrate_gamma_set,
     realtime_filter_response,
 )
-from pyshindo.plotting import filter_response_figure
+from pyshindo.plotting import filter_response_figure, filter_stages_figure
 
 # %% Inspect the standard 100-Hz improved design
 standard_design = design_realtime_filter(
@@ -21,6 +21,17 @@ standard_design = design_realtime_filter(
 print(standard_design.name)
 print(standard_design.sos)
 print(f"Maximum pole radius: {standard_design.max_pole_radius:.12f}")
+
+# %% Inspect the named analog factors that make up each of the three designs
+for design in (
+    design_realtime_filter(100.0, filter_name=RealtimeFilter.KUNUGI_2008),
+    standard_design,
+    design_realtime_filter(50.0, filter_name=RealtimeFilter.JP7681907_LOWRATE),
+):
+    print(f"--- {design.name} @ {design.sampling_rate_hz:g} Hz ---")
+    for stage in design.stages:
+        print(f"  {stage.name:20s} f={stage.characteristic_frequency_hz}")
+    filter_stages_figure(design).show()
 
 # %% Reproduce the analog amplitude-ratio range
 frequency_hz = np.geomspace(0.1, 50.0, 10_000)
@@ -59,3 +70,5 @@ figure_50_hz = filter_response_figure(
     filter_names=(RealtimeFilter.AUTO,),
 )
 figure_50_hz.show()
+
+# %%

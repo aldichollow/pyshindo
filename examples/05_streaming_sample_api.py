@@ -28,3 +28,5 @@ print(f"Last raw intensity:      {latest.intensity_raw:.6f}")
 print(f"Maximum raw intensity:   {estimator.approximate_intensity_raw:.6f}")
 print(f"Last filtered resultant: {latest.resultant_acceleration_gal:.6f} gal")
 assert np.isfinite(estimator.approximate_intensity_raw)
+
+# %%

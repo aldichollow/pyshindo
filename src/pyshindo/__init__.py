@@ -18,6 +18,7 @@ from .filters import (
     RealtimeFilter,
     apply_jma_filter_fft,
     design_realtime_filter,
+    filter_stage_response,
     jma_filter_components,
     jma_filter_response,
     kunugi_2012_analog_amplitude,
@@ -29,6 +30,7 @@ from .filters import (
 from .measured import calculate_measured_intensity, measured_intensity
 from .models import (
     AmplitudeDurationCurve,
+    FilterStage,
     FrequencyResponse,
     IntensityComparisonResult,
     MeasuredIntensityResult,
@@ -68,6 +70,7 @@ __all__ = [
     "AccelerationUnit",
     "AmplitudeDurationCurve",
     "__version__",
+    "FilterStage",
     "FrequencyResponse",
     "IntensityComparisonResult",
     "IntensityScale",
@@ -99,6 +102,7 @@ __all__ = [
     "duration_threshold",
     "duration_threshold_at",
     "exceedance_duration",
+    "filter_stage_response",
     "intensity_from_acceleration",
     "intensity_label",
     "jma_filter_components",

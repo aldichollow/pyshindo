@@ -21,10 +21,6 @@ sampling_rate_hz = 100.0
 acceleration_gal = synthetic_three_component_motion(
     sampling_rate_hz=sampling_rate_hz,
     duration_s=30.0,
-    center_s=13.0,
-    width_s=2.4,
-    amplitudes_gal=(90.0, 62.0, 34.0),
-    frequencies_hz=(1.1, 2.4, 5.8),
 )
 acceleration_gal, _ = scale_acceleration_to_intensity(
     acceleration_gal,
@@ -79,3 +75,5 @@ duration_figure = amplitude_duration_figure(
     sampling_rate_hz,
 )
 duration_figure.show()
+
+# %%
