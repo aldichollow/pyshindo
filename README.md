@@ -207,6 +207,7 @@ Plotly figures use a restrained package theme. Intensity colors 1 through 7 foll
 - [API reference (Japanese)](docs/api.md)
 - [Long-period ground motion class (Japanese)](docs/long-period.md)
 - [Observed data I/O (Japanese)](docs/data.md)
+- [Validation against JMA's published values (Japanese)](docs/validation.md)
 
 ## Examples
 

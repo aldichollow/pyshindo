@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 
 import numpy as np
 
+from .._version import __version__
 from ..exceptions import DataFormatError
 from ..models import DownloadedRecord, JMARecord, JMARecordMetadata
 
@@ -192,7 +193,7 @@ def download_jma_record(
     timeout_s: float = 30.0,
     max_bytes: int = 64 * 1024 * 1024,
     expected_sha256: str | None = None,
-    user_agent: str = "pyshindo/0.1 (+scientific-use)",
+    user_agent: str = f"pyshindo/{__version__} (+scientific-use)",
 ) -> DownloadedRecord:
     """Download one explicitly selected record to a local file atomically.
 
