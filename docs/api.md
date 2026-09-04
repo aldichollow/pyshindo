@@ -182,9 +182,16 @@ result.sva_cm_s              # 周期ごとのSva (32,)
 result.bands                 # 周期帯別(1秒台〜7秒台)の最大Svaと階級
 ```
 
-水平2成分のみを入力します(上下動は使いません。3成分を渡すとエラーになります)。逐次処理は `LongPeriodEstimator` で、一括処理と厳密に同じ結果になります。
+水平2成分のみを入力します(上下動は使いません。3成分を渡すとエラーになります)。逐次処理は `LongPeriodEstimator` です。
 
-アルゴリズム・一次資料・公式値との照合結果は [`docs/long-period.md`](long-period.md) を参照してください。
+`solver` で振動子バンクの解き方を選べます。いずれも解いている式は同じで、演算の順序だけが違います。
+
+- `"filter"`(既定): 周期ごとの2次IIRフィルタとしてまとめて解きます。逐次ループがコンパイル済みコードに移るため約13倍高速です。
+- `"recurrence"`: 気象庁の資料どおりの状態空間漸化式をPythonで1サンプルずつ進めます。`LongPeriodEstimator` が使っているのはこちらなので、一括結果を逐次結果とビット単位で一致させたい場合に選びます。
+
+既定の `"filter"` と `"recurrence"` の差は浮動小数点の丸めのみで、相対1e-12程度です。階級判定に影響しないことは回帰テストで確認しています。
+
+アルゴリズム・一次資料・公式値との照合結果は [`docs/long-period.md`](long-period.md)、公式値との照合の全体像は [`docs/validation.md`](validation.md) を参照してください。
 
 ## `pyshindo.obspy_interop`(ObsPy連携、要 `pip install pyshindo[obspy]`)
 

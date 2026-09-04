@@ -14,6 +14,7 @@ a separate problem and is not implemented here.
 See ``docs/long-period.md`` for the algorithm and its primary sources.
 """
 
+from ._core import OscillatorSolver
 from .calculation import calculate_long_period_class
 from .models import (
     LongPeriodBandResult,
@@ -44,6 +45,7 @@ __all__ = [
     "LongPeriodResult",
     "LongPeriodTiming",
     "LongPeriodUpdate",
+    "OscillatorSolver",
     "band_period_range_s",
     "calculate_long_period_class",
     "classify_long_period",

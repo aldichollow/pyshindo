@@ -250,7 +250,7 @@ def test_pipeline_matches_an_independent_ode_solution() -> None:
 
 def test_chunked_streaming_is_identical_to_batch() -> None:
     values = horizontal_record()
-    batch = calculate_long_period_class(values, RATE)
+    batch = calculate_long_period_class(values, RATE, solver="recurrence")
     estimator = LongPeriodEstimator(RATE)
     rng = np.random.default_rng(20260904)
     position = 0
@@ -264,13 +264,52 @@ def test_chunked_streaming_is_identical_to_batch() -> None:
 
 def test_sample_by_sample_streaming_is_identical_to_batch() -> None:
     values = horizontal_record(duration_s=6.0)
-    batch = calculate_long_period_class(values, RATE)
+    batch = calculate_long_period_class(values, RATE, solver="recurrence")
     estimator = LongPeriodEstimator(RATE)
     for sample in values:
         update = estimator.process_sample(sample)
     np.testing.assert_array_equal(estimator.sva_cm_s, batch.sva_cm_s)
     assert update.sample_count == values.shape[0]
     assert update.class_so_far is batch.long_period_class
+
+
+def test_both_solvers_agree_to_floating_point_rounding() -> None:
+    values = horizontal_record()
+    fast = calculate_long_period_class(values, RATE, solver="filter")
+    reference = calculate_long_period_class(values, RATE, solver="recurrence")
+    # Same equation, different arithmetic order, so agreement is at rounding
+    # level rather than exact -- but the class must never be able to differ.
+    np.testing.assert_allclose(fast.sva_cm_s, reference.sva_cm_s, rtol=1e-10)
+    assert fast.long_period_class is reference.long_period_class
+    assert [b.long_period_class for b in fast.bands] == [
+        b.long_period_class for b in reference.bands
+    ]
+
+
+def test_retained_response_agrees_between_solvers() -> None:
+    values = horizontal_record(duration_s=6.0)
+    fast = calculate_long_period_class(values, RATE, solver="filter", retain_response=True)
+    reference = calculate_long_period_class(
+        values, RATE, solver="recurrence", retain_response=True
+    )
+    assert fast.absolute_velocity_cm_s is not None
+    assert reference.absolute_velocity_cm_s is not None
+    np.testing.assert_allclose(
+        fast.absolute_velocity_cm_s, reference.absolute_velocity_cm_s, rtol=1e-9, atol=1e-12
+    )
+
+
+@pytest.mark.parametrize("samples", [1, 2, 3])
+def test_both_solvers_agree_on_records_shorter_than_the_filter_state(samples: int) -> None:
+    values = horizontal_record(duration_s=1.0)[:samples]
+    fast = calculate_long_period_class(values, RATE, solver="filter")
+    reference = calculate_long_period_class(values, RATE, solver="recurrence")
+    np.testing.assert_allclose(fast.sva_cm_s, reference.sva_cm_s, rtol=1e-10, atol=1e-15)
+
+
+def test_unknown_solver_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown solver"):
+        calculate_long_period_class(horizontal_record(duration_s=2.0), RATE, solver="newmark")
 
 
 def test_streaming_maximum_never_decreases() -> None:
@@ -285,7 +324,7 @@ def test_streaming_maximum_never_decreases() -> None:
 
 def test_estimator_result_matches_the_batch_result() -> None:
     values = horizontal_record()
-    batch = calculate_long_period_class(values, RATE)
+    batch = calculate_long_period_class(values, RATE, solver="recurrence")
     estimator = LongPeriodEstimator(RATE)
     estimator.process(values)
     streamed = estimator.result()

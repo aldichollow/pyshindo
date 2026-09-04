@@ -55,9 +55,18 @@ for start in range(0, horizontal_gal.shape[0], 1000):
         f"Sva so far {update.max_sva_so_far_cm_s:8.4f} cm/s  "
         f"class {update.class_so_far}"
     )
-# Streaming and batch are the same arithmetic, not merely close.
-np.testing.assert_array_equal(estimator.sva_cm_s, result.sva_cm_s)
-print("streaming result is identical to the batch result")
+# The estimator steps the published recurrence, which is also what the batch
+# calculation does under solver="recurrence" -- same arithmetic, not merely
+# close. The default batch solver runs the same equation as an IIR filter per
+# period, which is far faster and agrees to floating-point rounding.
+np.testing.assert_array_equal(
+    estimator.sva_cm_s,
+    calculate_long_period_class(
+        horizontal_gal, sampling_rate_hz, unit="gal", solver="recurrence"
+    ).sva_cm_s,
+)
+np.testing.assert_allclose(estimator.sva_cm_s, result.sva_cm_s, rtol=1e-10)
+print("streaming matches the reference solver exactly, and the fast solver to 1e-10")
 
 # %% Verify against an officially published JMA record
 # JMA publishes, for each event, the acceleration waveforms and the absolute
