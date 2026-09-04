@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 
 from .scale import IntensityScale
+from .signal import time_axis
 from .units import AccelerationUnit, FloatArray
 
 
@@ -308,10 +309,7 @@ class JMARecord:
     @property
     def time_s(self) -> FloatArray:
         """Return a zero-based time axis in seconds."""
-        return (
-            np.arange(self.acceleration.shape[0], dtype=np.float64)
-            / self.metadata.sampling_rate_hz
-        )
+        return time_axis(self.acceleration.shape[0], self.metadata.sampling_rate_hz)
 
     @property
     def duration_s(self) -> float:
@@ -328,3 +326,47 @@ class DownloadedRecord:
     byte_count: int
     sha256: str
     headers: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ObsPyRecordMetadata:
+    """Station and timing fields carried over from an ObsPy stream.
+
+    ``unit`` is not read from the stream: SEED and its common exchange formats
+    carry no reliable physical-unit field, so the caller states the unit when
+    converting and it is recorded here unchanged. ``component_names`` are
+    derived from the SEED orientation codes in ``channel_codes``; see
+    :func:`pyshindo.obspy_interop.from_obspy_stream`.
+    """
+
+    network: str
+    station: str
+    location: str
+    channel_codes: tuple[str, ...]
+    component_names: tuple[str, ...]
+    sampling_rate_hz: float
+    start_time: datetime
+    unit: str
+
+    @property
+    def acceleration_unit(self) -> AccelerationUnit:
+        """Parse the declared unit into :class:`AccelerationUnit`."""
+        return AccelerationUnit.parse(self.unit)
+
+
+@dataclass(frozen=True, slots=True)
+class ObsPyRecord:
+    """An acceleration record converted from an ObsPy stream."""
+
+    metadata: ObsPyRecordMetadata
+    acceleration: FloatArray
+
+    @property
+    def time_s(self) -> FloatArray:
+        """Return a zero-based time axis in seconds."""
+        return time_axis(self.acceleration.shape[0], self.metadata.sampling_rate_hz)
+
+    @property
+    def duration_s(self) -> float:
+        """Return sample count divided by sampling rate."""
+        return self.acceleration.shape[0] / self.metadata.sampling_rate_hz

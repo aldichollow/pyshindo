@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2026-09-05
+
+- JMA long-period ground motion class (`pyshindo.long_period`): the published 20-second second-order high-pass, a bank of 32 damped oscillators over the official 1.6-7.8 s grid solved by the linear acceleration method, ground velocity by trapezoidal integration, the per-sample horizontal vector composite adopted by JMA in 2016, and the overall plus per-period-band classes. `LongPeriodEstimator` produces bit-identical results for streaming input. Every published constant is used verbatim at 100 Hz and regression-tested as a literal; other sampling rates re-derive the high-pass from the analog prototype behind those constants and are flagged as non-reference. Verified against JMA's own published absolute velocity response spectra, agreeing to about 2e-6 at the record maximum.
+- `pyshindo.plotting.long_period_spectrum_figure` draws the response spectrum against the class thresholds.
+- Velocity by cumulative trapezoidal integration (`integrate_to_velocity`) and peak ground velocity (`component_peak_velocity`, `peak_ground_velocity`), always returned in cm/s. No baseline correction is applied implicitly; the drift that follows from integrating an uncorrected record is documented rather than hidden.
+- Optional ObsPy interoperability (`pyshindo[obspy]`, `pyshindo.obspy_interop.from_obspy_stream`): converts a stream already in acceleration units into this package's arrays and metadata, making K-NET, KiK-net, miniSEED, SAC, and everything else `obspy.read` handles usable without reimplementing a reader. The adapter never resamples, trims, merges, rotates, or rescales, and rejects traces that disagree instead of reconciling them. The acceleration unit is a required argument rather than a guess, because SEED carries no dependable unit field.
+
 ## 0.1.0 - 2026-09-02
 
 - Frequency-domain reference calculation of instrumental seismic intensity (JMA FFT method), with per-call timing on the result.

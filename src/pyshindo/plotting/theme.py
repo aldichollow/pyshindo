@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any, Final
 
+from ..long_period.scale import LongPeriodClass
 from ..scale import IntensityScale
 
 # Source: Japan Meteorological Agency, "Color usage guideline for weather
@@ -26,6 +27,21 @@ JMA_INTENSITY_COLORS: Final = MappingProxyType(
     }
 )
 
+# Source: the stylesheet JMA serves with its own long-period observation
+# pages, `ltpgm_explain/style_j.css`, classes `td.lv0`-`td.lv4`. The color
+# guideline above predates the long-period class and does not assign it
+# colors; these are the same family regardless.
+LONG_PERIOD_CLASS_COLORS: Final = MappingProxyType(
+    {
+        LongPeriodClass.ZERO: "#D3D3D3",
+        LongPeriodClass.ONE: "#0040FF",
+        LongPeriodClass.TWO: "#FFE600",
+        LongPeriodClass.THREE: "#FF2800",
+        LongPeriodClass.FOUR: "#A50021",
+    }
+)
+
+
 TEXT_ON_INTENSITY: Final = MappingProxyType(
     {
         IntensityScale.ZERO: "#18202A",
@@ -41,14 +57,6 @@ TEXT_ON_INTENSITY: Final = MappingProxyType(
     }
 )
 
-# A small, deliberately restrained accent family: one neutral near-black for
-# the combined/reference/resultant role -- always the same trace's role
-# across every figure, so it stays a plain grayscale line rather than
-# picking up a color cast -- and a handful of muted, similarly-toned hues
-# for the recurring signal roles (component, threshold, real-time, running
-# max). Kept few and tonally close on purpose, rather than a wide
-# categorical set, so a figure with several traces still reads as one
-# coherent, quiet palette.
 LINE_COLORS: Final = MappingProxyType(
     {
         "ns": "#33578E",
@@ -64,26 +72,12 @@ LINE_COLORS: Final = MappingProxyType(
     }
 )
 
-# Shared widths so every figure's primary trace, guide line, and per-stage
-# line reads as the same weight instead of each call site picking its own
-# number. PRIMARY_LINE_WIDTH and GUIDE_LINE_WIDTH are equal on purpose: a
-# solid primary trace and a dotted guide already read as different roles
-# from their dash pattern alone, so giving them the same thickness is what
-# makes the whole set of figures feel like one consistent weight.
 PRIMARY_LINE_WIDTH: Final = 1.6
 GUIDE_LINE_WIDTH: Final = 1.6
 ACCENT_LINE_WIDTH: Final = 1.8
 
-# A dense, many-cycle waveform (a raw or filtered acceleration channel, a
-# resultant) reads better a touch thinner than a smooth analytic curve at
-# the same PRIMARY_LINE color -- same color as PRIMARY_LINE, so it is still
-# recognizably the same "primary trace" role, just weighted for the kind of
-# data it is drawing.
 WAVEFORM_LINE_WIDTH: Final = 1.2
 
-# One flat text color (plus a white halo where a label sits on a saturated
-# JMA color -- see figures._add_outlined_label) instead of switching text
-# color per background, so every label in the package reads the same way.
 LABEL_TEXT_COLOR: Final = "#141414"
 LABEL_OUTLINE_COLOR: Final = "#FFFFFF"
 
@@ -98,54 +92,37 @@ STAGE_COLORS: Final = (
     "#A98A3B",
     "#8C6350",
 )
-"""Nine colors for filter-stage breakdown plots -- the one place a figure
-legitimately needs more than a couple of hues (the improved and low-rate
-designs each have eight named analog factors plus a gain stage). Tonally
-matched to LINE_COLORS rather than a wide rainbow, so the extra variety
-still reads as part of the same restrained palette. None is near-black, so
-the solid combined/reference trace (PRIMARY_LINE) always stands apart from
-the dotted per-stage traces."""
+"""Nine colors for filter-stage plots, enough for the longest design (eight
+named analog factors plus a gain stage). None is near-black, so the solid
+combined trace stays distinct from the dotted per-stage traces."""
 
 PRIMARY_LINE: Final = MappingProxyType(
     {"color": LINE_COLORS["reference"], "width": PRIMARY_LINE_WIDTH}
 )
-"""Shared style for the one solid, near-black 'combined' or 'reference' trace
-in a figure that also shows dotted contributing components -- the visual
-rule used throughout pyshindo.plotting is: solid gray = combined/primary
-result, dotted color = a contributing part or an alternative being compared
-against it."""
+"""Style of the primary trace. The rule throughout this package is: solid
+near-black for the combined or reference result, dotted color for a
+contributing part or an alternative compared against it. Guide lines share
+this width -- the dash pattern already tells the two roles apart."""
 
 WAVEFORM_LINE: Final = MappingProxyType(
     {"color": LINE_COLORS["reference"], "width": WAVEFORM_LINE_WIDTH}
 )
-"""Same color and role as :data:`PRIMARY_LINE`, at :data:`WAVEFORM_LINE_WIDTH`
--- for a raw or filtered acceleration channel or a resultant, rather than a
-smooth analytic curve."""
+"""Primary trace at a slightly thinner weight, for a dense waveform -- an
+acceleration channel or a resultant -- rather than a smooth analytic curve."""
 
-BOUNDARY_LINE: Final = MappingProxyType({"color": "#9AA0AC", "width": 0.5})
-"""Thin, pale line marking a JMA intensity-class boundary. Deliberately
-understated -- a visual tick mark, not a data series -- so it stays legible
-against both the pale background tint and the saturated edge strip in
-:func:`~pyshindo.plotting.figures.add_intensity_bands` without competing
-with either. Drawn with additional shape-level opacity on top of this
-already-light color (see the ``opacity`` passed alongside it) for a
-deliberately understated mark."""
+BOUNDARY_LINE: Final = MappingProxyType({"color": "#FFFFFF", "width": 0.5})
+"""Divider between two class bands. White works against both the saturated
+edge strip and the pale background tint, where any gray would have to
+compete with one or the other."""
 
 GUIDE_LINE_COLOR: Final = "#364F00"
-"""The one color used for every dotted guide/marker line across the package
-(a threshold crossing, a running maximum, an FFT-reference level, a peak
-annotation) -- a deep, clear green, rather than letting each figure's guide
-line pick its own hue (previously an amber threshold line in one figure and
-a rose "record max" line in another, which read as arbitrary, slightly-too-
-warm accents next to the neutral primary trace). Green also does not appear
-anywhere in the JMA intensity scale, so a guide line is never mistaken for
-part of that scale."""
+"""Color of every dotted guide line: a threshold crossing, a running
+maximum, an FFT-reference level, a peak marker. Green appears nowhere in the
+JMA intensity scale, so a guide is never read as part of it."""
 
 INTENSITY_STRIP_FRACTION: Final = 0.025
-"""Width of the saturated JMA-color edge strip in
-:func:`~pyshindo.plotting.figures.add_intensity_bands`, as a fraction of the
-plot's x-domain (so it scales with the figure instead of a fixed pixel
-guess)."""
+"""Width of the saturated class strip along the right edge, as a fraction of
+the x-domain so it scales with the figure."""
 
 _TEMPLATE_NAME: Final = "pyshindo"
 
@@ -217,12 +194,6 @@ def register_template() -> str:
                     "bgcolor": "rgba(255,255,255,0)",
                     "font": {"size": 11},
                 },
-                # The legend sits outside the axes, to the right, rather than
-                # stacked above the plot -- it grows downward as entries are
-                # added, so it can never collide with the title regardless of
-                # how many traces a figure has. apply_theme() replaces "r"
-                # with a value sized to the actual legend labels; the value
-                # here is only a fallback for a figure built without it.
                 "margin": {"l": 68, "r": 100, "t": 64, "b": 56},
                 "title": {
                     "x": 0.0,

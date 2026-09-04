@@ -510,6 +510,26 @@ def _kunugi_2012_sos(sampling_rate_hz: float, parameters: Kunugi2012Parameters) 
     return sos
 
 
+def _shared_leading_stages(
+    parameters: Kunugi2012Parameters,
+    dt: float,
+) -> list[FilterStage]:
+    """Return A1-A4, the four analog factors the 2012 and low-rate designs share.
+
+    Both designs open with the same period-effect factor and the same three
+    7 Hz-region factors, and only diverge from the correction stage onward,
+    where the generalized design substitutes its gamma-parameterized
+    sections for the fixed Boxer-Thaler ones.
+    """
+    f0, f1 = parameters.f0_hz, parameters.f1_hz
+    return [
+        FilterStage("A1: period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
+        FilterStage("A2: 7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
+        FilterStage("A3: 7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
+        FilterStage("A4: 7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+    ]
+
+
 def _kunugi_2012_stages(
     sampling_rate_hz: float,
     parameters: Kunugi2012Parameters,
@@ -526,7 +546,6 @@ def _kunugi_2012_stages(
     reproduces the combined ``sos`` exactly.
     """
     dt = 1.0 / sampling_rate_hz
-    f0, f1 = parameters.f0_hz, parameters.f1_hz
     fc, lp1, lp2, lp3 = (
         parameters.correction_hz,
         parameters.lowpass_1_hz,
@@ -534,10 +553,7 @@ def _kunugi_2012_stages(
         parameters.lowpass_3_hz,
     )
     return [
-        FilterStage("A1: period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
-        FilterStage("A2: 7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
-        FilterStage("A3: 7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
-        FilterStage("A4: 7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+        *_shared_leading_stages(parameters, dt),
         FilterStage(
             "A5: correction",
             fc,
@@ -620,7 +636,6 @@ def _kunugi_lowrate_stages(
     Boxer-Thaler form.
     """
     dt = 1.0 / sampling_rate_hz
-    f0, f1 = parameters.f0_hz, parameters.f1_hz
     fc, lp1, lp2, lp3 = (
         parameters.correction_hz,
         parameters.lowpass_1_hz,
@@ -628,10 +643,7 @@ def _kunugi_lowrate_stages(
         parameters.lowpass_3_hz,
     )
     return [
-        FilterStage("A1: period effect", f0, _first_order_section(0.0, 1.0, f0, dt)),
-        FilterStage("A2: 7 Hz factor 1", f1, _first_order_section(1.0, 2.0, f1, dt)),
-        FilterStage("A3: 7 Hz factor 2", f1, _first_order_section(4.0, 8.0, f1, dt)),
-        FilterStage("A4: 7 Hz factor 3", f1, _first_order_section(0.25, 0.5, f1, dt)),
+        *_shared_leading_stages(parameters, dt),
         FilterStage(
             "A5: correction",
             fc,

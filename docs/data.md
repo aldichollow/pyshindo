@@ -37,4 +37,38 @@ record = read_jma_record(path)
 
 ## その他の観測網
 
-K-NET/KiK-netなど他のアーカイブは独自の形式・認証・利用規約を持つため、本パッケージは提供元ごとのスクレイピングには対応していません。
+K-NET/KiK-netなど他のアーカイブは独自の形式・認証・利用規約を持つため、本パッケージは提供元ごとのスクレイピングには対応していません。その代わりに、既にこれらの形式を読める [ObsPy](https://docs.obspy.org/) との変換ヘルパーを用意しています。
+
+## ObsPyとの連携
+
+```bash
+python -m pip install "pyshindo[obspy]"
+```
+
+```python
+import obspy
+from pyshindo import calculate_measured_intensity
+from pyshindo.obspy_interop import from_obspy_stream
+
+stream = obspy.read("...")            # K-NET / KiK-net / miniSEED / SAC など
+stream = stream.select(station="...")  # 1観測点の3成分に絞る
+
+record = from_obspy_stream(stream, unit="gal")
+result = calculate_measured_intensity(
+    record.acceleration,
+    record.metadata.sampling_rate_hz,
+    unit=record.metadata.unit,
+)
+```
+
+`from_obspy_stream` は変換だけを行う薄いアダプタです。リサンプリング・トリミング・マージ・回転・スケーリングは一切行いません。いずれも記録そのものを書き換える操作であり、ObsPy側に `Stream.resample()` / `Stream.trim()` / `Stream.merge()` / `Stream.remove_response()` として用意されているため、必要なら呼び出し側が先に明示的に適用してください。サンプリング周波数・サンプル数・開始時刻・観測点が食い違うトレースは、暗黙に整合させるのではなくエラーとして拒否します。
+
+### 単位を引数で必須にしている理由
+
+SEEDおよびその周辺の交換形式には、物理単位を確実に伝えるフィールドがありません。ObsPyが返すのはリーダーが生成した数値そのもの(応答除去済みなら `remove_response(output=...)` で指定した量)であり、パッケージ側から単位を判別する手段がありません。そのため `unit` は推測せず必須の引数とし、呼び出し側の申告としてメタデータに記録します。
+
+### 成分の並びとラベル
+
+列はSEEDの方位コード(チャンネル名の末尾1文字)から水平・水平・上下の順に並べ替えられます。`N`/`E`/`Z` はそれぞれ `NS`/`EW`/`UD` になります。`1`/`2` はSEEDでは「方位が特定されていない直交する水平2成分」を意味するため、北・東であるかのように偽らず `H1`/`H2` とラベルします。これは数値的には無害です。計測震度もPGVも成分をユークリッドノルムで合成するため、水平2成分が面内でどう回転していても結果は変わりません(`tests/test_velocity.py` に回転不変性の回帰テストがあります)。
+
+方位コードから判別できない場合は `channel_order=("...", "...", "...")` で並び順を明示できます。

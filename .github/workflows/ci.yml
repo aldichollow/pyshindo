@@ -17,7 +17,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[plot,dev]"
+      - run: python -m pip install -e ".[plot,obspy,dev]"
       - run: ruff check .
       - run: mypy src/pyshindo
       - run: pytest
