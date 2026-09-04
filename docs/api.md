@@ -124,6 +124,22 @@ sampling_diagnostics(timestamps_s) -> SamplingDiagnostics
 
 前処理系(`remove_offset` / `detrend_acceleration` / `cosine_taper` / `resample_acceleration`)は計測震度の定義に暗黙には含まれないため、常に明示的に呼び出す必要があります。
 
+## 速度・PGV
+
+```python
+integrate_to_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
+component_peak_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
+peak_ground_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> float
+```
+
+加速度を台形則で累積積分して速度を得ます。入力単位に関わらず内部でgalへ変換するため、戻り値は常にcm/s(カイン)です。
+
+ベースライン処理(オフセット除去・トレンド除去・ハイパスフィルタ)は一切自動適用しません。積分は「本物の長周期成分」と「ベースラインの誤差」を区別できないため、平均がゼロでない記録(上下動に重力成分が残っている場合を含む)を積分すると速度は直線的にドリフトします。これは演算が正しく働いた結果であって不具合ではありません。どの補正が適切かは記録と目的によって変わるので、`remove_offset`(事前区間を `baseline_samples` で指定)や `detrend_acceleration` を明示的に呼び出してください。強震観測の実務ではハイパスフィルタを用いることも一般的です。
+
+`peak_ground_velocity` は渡された成分の合成値を返します(`peak_ground_acceleration` と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGVになります。どちらを採るかは解析側の選択なので、この関数側では固定していません。
+
+使用例は [`examples/06_peak_velocity.py`](../examples/06_peak_velocity.py) にあります。
+
 ## 単位変換
 
 ```python
@@ -151,6 +167,37 @@ from pyshindo.io import parse_jma_text, parse_jma_bytes, read_jma_record, downlo
 
 詳細は [`docs/data.md`](data.md) を参照してください。
 
+## `pyshindo.long_period`(長周期地震動階級)
+
+```python
+from pyshindo.long_period import (
+    calculate_long_period_class, LongPeriodEstimator, LongPeriodClass,
+)
+
+result = calculate_long_period_class(horizontal_gal, 100.0, unit="gal")
+result.long_period_class     # LongPeriodClass("2") など
+result.max_sva_cm_s          # 全周期での絶対速度応答の最大値 [cm/s]
+result.critical_period_s     # 最大値を与えた周期
+result.sva_cm_s              # 周期ごとのSva (32,)
+result.bands                 # 周期帯別(1秒台〜7秒台)の最大Svaと階級
+```
+
+水平2成分のみを入力します(上下動は使いません。3成分を渡すとエラーになります)。逐次処理は `LongPeriodEstimator` で、一括処理と厳密に同じ結果になります。
+
+アルゴリズム・一次資料・公式値との照合結果は [`docs/long-period.md`](long-period.md) を参照してください。
+
+## `pyshindo.obspy_interop`(ObsPy連携、要 `pip install pyshindo[obspy]`)
+
+```python
+from pyshindo.obspy_interop import from_obspy_stream
+
+record = from_obspy_stream(stream, *, unit, channel_order=None, allow_fewer_components=True)
+record.acceleration            # (サンプル数, 成分数) のfloat64配列
+record.metadata                # ObsPyRecordMetadata
+```
+
+ObsPyの `Stream` を本パッケージが扱う配列へ変換するだけの薄いアダプタです。詳細は [`docs/data.md`](data.md) を参照してください。
+
 ## `pyshindo.plotting`(可視化、要 `pip install pyshindo[plot]`)
 
 ```python
@@ -158,6 +205,7 @@ from pyshindo.plotting import (
     acceleration_figure, jma_filter_components_figure, filter_response_figure,
     filter_stages_figure, measured_result_figure, amplitude_duration_figure,
     realtime_result_figure, intensity_comparison_figure,
+    long_period_spectrum_figure,
 )
 ```
 

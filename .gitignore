@@ -16,3 +16,4 @@ site/
 _tmp/
 _reports/
 .playwright-mcp/
+.cache/

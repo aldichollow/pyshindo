@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -17,6 +17,8 @@ from ..filters.realtime import (
     filter_stage_response,
     realtime_filter_response,
 )
+from ..long_period.models import LongPeriodResult
+from ..long_period.scale import LONG_PERIOD_CLASS_INTERVALS
 from ..models import (
     IntensityComparisonResult,
     MeasuredIntensityResult,
@@ -34,6 +36,7 @@ from .theme import (
     LABEL_OUTLINE_COLOR,
     LABEL_TEXT_COLOR,
     LINE_COLORS,
+    LONG_PERIOD_CLASS_COLORS,
     PRIMARY_LINE,
     STAGE_COLORS,
     WAVEFORM_LINE,
@@ -51,9 +54,6 @@ _FILTER_STYLES = {
         "dot",
     ),
 }
-# Sub-decade minor gridlines for the log-log filter response figures -- with
-# only major gridlines at powers of ten, a value like "3 Hz" or a gain of
-# "0.03" has nothing nearby to read it off against.
 _LOG_MINOR_GRID = {
     "xaxis_minor_showgrid": True,
     "xaxis_minor_gridcolor": LINE_COLORS["grid"],
@@ -62,8 +62,6 @@ _LOG_MINOR_GRID = {
     "yaxis_minor_gridcolor": LINE_COLORS["grid"],
     "yaxis_minor_gridwidth": 0.4,
 }
-# The 8 one-pixel offsets around a point -- used to fake a text stroke (see
-# _add_outlined_label) since Plotly annotations have no native outline.
 _TEXT_OUTLINE_OFFSETS = tuple(
     (dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if (dx, dy) != (0, 0)
 )
@@ -121,12 +119,9 @@ def _add_stacked_channels(
     """Add one monochrome row per channel, each labeled by its own y-axis.
 
     Shared by :func:`acceleration_figure` and :func:`measured_result_figure`
-    so a "these are the acceleration channels" panel looks identical --
-    same color, same width, one row per channel -- wherever it appears,
-    rather than each figure styling its channels differently. All rows
-    share one symmetric y-range (the largest sample across every channel)
-    instead of each auto-scaling on its own, so a channel's amplitude can
-    be compared directly against the others just by eye.
+    so acceleration channels look the same wherever they appear. Every row
+    takes one symmetric y-range from the largest sample across all channels,
+    so their amplitudes can be compared by eye.
     """
     limit = float(np.max(np.abs(values))) * 1.05 if values.size else 1.0
     if limit <= 0.0:
@@ -163,11 +158,8 @@ def _add_endpoint_label(
     row: int | None = None,
     col: int | None = None,
 ) -> Any:
-    """Mark the last finite sample of ``y`` with its value.
-
-    A single small label at the current reading -- the same touch used in
-    live monitoring displays -- rather than making the reader trace the
-    curve to its end and compare against the axis.
+    """Mark the last finite sample of ``y`` with its value, so the reader
+    does not have to trace the curve to its end and read off the axis.
     """
     finite = np.flatnonzero(np.isfinite(y))
     if finite.size == 0:
@@ -204,11 +196,9 @@ def _add_outlined_label(
 ) -> None:
     """Draw ``text`` in :data:`LABEL_TEXT_COLOR` with a white halo.
 
-    Plotly annotations have no native text-stroke, so the halo is built
-    from eight copies of the same text nudged one pixel in every direction
-    (``xshift``/``yshift``) and drawn first, with the real text on top.
-    This keeps every label the same flat color regardless of what it sits
-    on, instead of picking a different text color per background.
+    Plotly annotations have no text-stroke, so the halo is eight copies of
+    the text nudged one pixel in every direction and drawn underneath. That
+    lets one text color stay legible on every band color.
     """
     kwargs = _rowcol_kwargs(row, col)
     base = {
@@ -234,6 +224,158 @@ def _add_outlined_label(
     )
 
 
+def _add_intensity_traces(
+    figure: Any,
+    go: Any,
+    *,
+    time: np.ndarray,
+    result: RealtimeIntensityResult,
+    running_maximum_name: str,
+    row: int | None = None,
+    col: int | None = None,
+) -> None:
+    """Add the real-time intensity pair and its endpoint label.
+
+    Two figures show these same series, so they are drawn from one place.
+    Only the running-maximum label differs: "Record maximum" for a finished
+    record, "Running maximum" for a comparison.
+    """
+    rowcol = _rowcol_kwargs(row, col)
+    figure.add_trace(
+        go.Scattergl(
+            x=time,
+            y=result.intensity_raw,
+            mode="lines",
+            name="Real-time intensity Ir",
+            line=dict(PRIMARY_LINE),
+            hovertemplate="%{x:.3f} s<br>Ir %{y:.3f}<extra></extra>",
+        ),
+        **rowcol,
+    )
+    figure.add_trace(
+        go.Scattergl(
+            x=time,
+            y=result.record_max_intensity_raw,
+            mode="lines",
+            name=running_maximum_name,
+            line={"color": GUIDE_LINE_COLOR, "width": GUIDE_LINE_WIDTH, "dash": "dot"},
+            hovertemplate="%{x:.3f} s<br>Ia %{y:.3f}<extra></extra>",
+        ),
+        **rowcol,
+    )
+    _add_endpoint_label(
+        figure,
+        go,
+        x=time,
+        y=result.intensity_raw,
+        color=LINE_COLORS["reference"],
+        row=row,
+        col=col,
+    )
+
+
+def _add_class_bands(
+    figure: Any,
+    *,
+    intervals: Mapping[Any, tuple[float, float]],
+    colors: Mapping[Any, str],
+    labels: Mapping[Any, str],
+    y_min: float,
+    y_max: float,
+    row: int | None = None,
+    col: int | None = None,
+    opacity: float = 0.10,
+    bands: bool = True,
+    strip: bool = False,
+    boundaries: bool = False,
+    annotate: bool = True,
+    log_y: bool = False,
+) -> Any:
+    """Shade a y-axis by a JMA class scale.
+
+    Shared by the instrumental-intensity figures and the long-period response
+    spectrum so both kinds of figure are drawn by the same code, with the same
+    band opacity, edge strip, boundary lines, and label treatment. Only the
+    interval table, the colors, and the labels differ between them.
+
+    ``log_y`` is needed because Plotly places shapes on a logarithmic axis by
+    the data value but places annotations by its logarithm; a figure with a
+    log Sva axis therefore needs the label coordinate transformed while the
+    rectangles stay untouched.
+    """
+    shape_kwargs = _rowcol_kwargs(row, col)
+    if boundaries:
+        figure.update_yaxes(showgrid=False, **shape_kwargs)
+    for scale, (lower, upper) in intervals.items():
+        visible_lower = max(lower, y_min)
+        visible_upper = min(upper, y_max)
+        if visible_upper <= visible_lower:
+            continue
+        if bands:
+            figure.add_hrect(
+                y0=visible_lower,
+                y1=visible_upper,
+                fillcolor=colors[scale],
+                opacity=opacity,
+                line_width=0,
+                layer="below",
+                **shape_kwargs,
+            )
+        if strip:
+            figure.add_shape(
+                type="rect",
+                xref="x domain",
+                x0=1.0 - INTENSITY_STRIP_FRACTION,
+                x1=1.0,
+                y0=visible_lower,
+                y1=visible_upper,
+                fillcolor=colors[scale],
+                opacity=0.95,
+                line_width=0,
+                layer="below",
+                **shape_kwargs,
+            )
+        if boundaries and np.isfinite(lower) and lower > y_min:
+            figure.add_hline(
+                y=lower,
+                line=dict(BOUNDARY_LINE),
+                opacity=0.6,
+                layer="below",
+                **shape_kwargs,
+            )
+        if annotate:
+            if log_y:
+                label_y = (np.log10(visible_lower) + np.log10(visible_upper)) / 2.0
+            else:
+                label_y = (visible_lower + visible_upper) / 2.0
+            if strip:
+                _add_outlined_label(
+                    figure,
+                    x=1.0 - INTENSITY_STRIP_FRACTION / 2.0,
+                    xref="x domain",
+                    y=label_y,
+                    text=labels[scale],
+                    xanchor="center",
+                    font_size=10,
+                    row=row,
+                    col=col,
+                )
+            else:
+                annotation_kwargs: dict[str, Any] = {
+                    "x": 1.0,
+                    "xref": "x domain",
+                    "y": label_y,
+                    "text": labels[scale],
+                    "showarrow": False,
+                    "xanchor": "right",
+                    "font": {"size": 10, "color": LINE_COLORS["muted"]},
+                    "bgcolor": "rgba(255,255,255,0.82)",
+                    "borderpad": 2,
+                }
+                figure.add_annotation(**annotation_kwargs, **shape_kwargs)
+    return figure
+
+
 def add_intensity_bands(
     figure: Any,
     *,
@@ -250,81 +392,30 @@ def add_intensity_bands(
     """Add JMA intensity-class reference marks to a y-axis.
 
     ``bands`` tints the full plot width with each class's color, very
-    faintly, for context. ``strip`` instead paints a narrow, fully
-    saturated band along the right edge -- like a tab poking out of the
-    page -- so the classes stay identifiable by color without washing out
-    the data underneath. ``boundaries`` adds a thin line at each class
-    edge. ``annotate`` labels each class: on the strip, as black text with
-    a white halo (see :func:`_add_outlined_label`) so one flat text color
-    stays legible on every JMA color; otherwise beside the plain axis edge
-    with a translucent background instead.
+    faintly, for context. ``strip`` paints a narrow, fully saturated band
+    along the right edge -- like a tab poking out of the page -- so the
+    classes stay identifiable by color without washing out the data
+    underneath. ``boundaries`` adds a thin line at each class edge.
+    ``annotate`` labels each class: on the strip, as black text with a white
+    halo (see :func:`_add_outlined_label`) so one flat text color stays
+    legible on every JMA color; otherwise beside the plain axis edge with a
+    translucent background instead.
     """
-    shape_kwargs = _rowcol_kwargs(row, col)
-    for scale, (lower, upper) in INTENSITY_INTERVALS.items():
-        visible_lower = max(lower, y_min)
-        visible_upper = min(upper, y_max)
-        if visible_upper <= visible_lower:
-            continue
-        if bands:
-            figure.add_hrect(
-                y0=visible_lower,
-                y1=visible_upper,
-                fillcolor=JMA_INTENSITY_COLORS[scale],
-                opacity=opacity,
-                line_width=0,
-                layer="below",
-                **shape_kwargs,
-            )
-        if strip:
-            figure.add_shape(
-                type="rect",
-                xref="x domain",
-                x0=1.0 - INTENSITY_STRIP_FRACTION,
-                x1=1.0,
-                y0=visible_lower,
-                y1=visible_upper,
-                fillcolor=JMA_INTENSITY_COLORS[scale],
-                opacity=0.95,
-                line_width=0,
-                layer="below",
-                **shape_kwargs,
-            )
-        if boundaries and np.isfinite(lower) and lower > y_min:
-            figure.add_hline(
-                y=lower,
-                line=dict(BOUNDARY_LINE),
-                opacity=0.6,
-                layer="below",
-                **shape_kwargs,
-            )
-        if annotate:
-            label_y = (visible_lower + visible_upper) / 2.0
-            if strip:
-                _add_outlined_label(
-                    figure,
-                    x=1.0 - INTENSITY_STRIP_FRACTION / 2.0,
-                    xref="x domain",
-                    y=label_y,
-                    text=scale.japanese,
-                    xanchor="center",
-                    font_size=10,
-                    row=row,
-                    col=col,
-                )
-            else:
-                annotation_kwargs: dict[str, Any] = {
-                    "x": 1.0,
-                    "xref": "x domain",
-                    "y": label_y,
-                    "text": scale.japanese,
-                    "showarrow": False,
-                    "xanchor": "right",
-                    "font": {"size": 10, "color": LINE_COLORS["muted"]},
-                    "bgcolor": "rgba(255,255,255,0.82)",
-                    "borderpad": 2,
-                }
-                figure.add_annotation(**annotation_kwargs, **shape_kwargs)
-    return figure
+    return _add_class_bands(
+        figure,
+        intervals=INTENSITY_INTERVALS,
+        colors=JMA_INTENSITY_COLORS,
+        labels={scale: scale.japanese for scale in INTENSITY_INTERVALS},
+        y_min=y_min,
+        y_max=y_max,
+        row=row,
+        col=col,
+        opacity=opacity,
+        bands=bands,
+        strip=strip,
+        boundaries=boundaries,
+        annotate=annotate,
+    )
 
 
 def filter_response_figure(
@@ -568,8 +659,6 @@ def measured_result_figure(
     figure.update_yaxes(title_text="Resultant [gal]", row=resultant_row, col=1)
     figure.update_xaxes(title_text="Time [s]", row=resultant_row, col=1)
     figure.update_layout(
-        # Parentheses (not the "[...]" used elsewhere for a filter name or a
-        # unit) mark a descriptive qualifier that is neither.
         title="Instrumental seismic intensity (frequency-domain reference)",
         height=170 * channel_count + 320,
     )
@@ -653,36 +742,12 @@ def realtime_result_figure(
         row=1,
         col=1,
     )
-    figure.add_trace(
-        go.Scattergl(
-            x=time,
-            y=result.intensity_raw,
-            mode="lines",
-            name="Real-time intensity Ir",
-            line=dict(PRIMARY_LINE),
-            hovertemplate="%{x:.3f} s<br>Ir %{y:.3f}<extra></extra>",
-        ),
-        row=2,
-        col=1,
-    )
-    figure.add_trace(
-        go.Scattergl(
-            x=time,
-            y=result.record_max_intensity_raw,
-            mode="lines",
-            name="Record maximum Ia",
-            line={"color": GUIDE_LINE_COLOR, "width": GUIDE_LINE_WIDTH, "dash": "dot"},
-            hovertemplate="%{x:.3f} s<br>Ia %{y:.3f}<extra></extra>",
-        ),
-        row=2,
-        col=1,
-    )
-    _add_endpoint_label(
+    _add_intensity_traces(
         figure,
         go,
-        x=time,
-        y=result.intensity_raw,
-        color=LINE_COLORS["reference"],
+        time=time,
+        result=result,
+        running_maximum_name="Record maximum Ia",
         row=2,
         col=1,
     )
@@ -698,10 +763,6 @@ def realtime_result_figure(
         boundaries=True,
         annotate=True,
     )
-    # The class boundary lines already mark the meaningful y levels; the
-    # generic every-integer gridline underneath the bands/strip just adds
-    # visual noise (most obviously where it crosses the saturated strip).
-    figure.update_yaxes(showgrid=False, row=2, col=1)
     figure.update_yaxes(title_text="Acceleration [gal]", row=1, col=1)
     figure.update_yaxes(title_text="Instrumental intensity", range=list(y_range), row=2, col=1)
     figure.update_xaxes(title_text="Time [s]", row=2, col=1)
@@ -722,32 +783,12 @@ def intensity_comparison_figure(
     result = comparison.realtime
     time = np.arange(result.sample_count, dtype=np.float64) / result.sampling_rate_hz
     figure = go.Figure()
-    figure.add_trace(
-        go.Scattergl(
-            x=time,
-            y=result.intensity_raw,
-            mode="lines",
-            name="Real-time intensity Ir",
-            line=dict(PRIMARY_LINE),
-            hovertemplate="%{x:.3f} s<br>Ir %{y:.3f}<extra></extra>",
-        )
-    )
-    figure.add_trace(
-        go.Scattergl(
-            x=time,
-            y=result.record_max_intensity_raw,
-            mode="lines",
-            name="Running maximum Ia",
-            line={"color": GUIDE_LINE_COLOR, "width": GUIDE_LINE_WIDTH, "dash": "dot"},
-            hovertemplate="%{x:.3f} s<br>Ia %{y:.3f}<extra></extra>",
-        )
-    )
-    _add_endpoint_label(
+    _add_intensity_traces(
         figure,
         go,
-        x=time,
-        y=result.intensity_raw,
-        color=LINE_COLORS["reference"],
+        time=time,
+        result=result,
+        running_maximum_name="Running maximum Ia",
     )
     figure.add_hline(
         y=comparison.measured.intensity_raw,
@@ -758,13 +799,7 @@ def intensity_comparison_figure(
         ),
         annotation_position="top left",
     )
-    # Plotly silently drops row/col-targeted shapes added before any trace
-    # exists in that subplot cell; this figure has no subplots, so order
-    # relative to the traces above does not matter here.
     add_intensity_bands(figure, y_min=y_range[0], y_max=y_range[1], strip=True, boundaries=True)
-    # See the matching call in realtime_result_figure: the boundary lines
-    # already mark the meaningful levels, so the generic gridline is dropped.
-    figure.update_yaxes(showgrid=False)
     figure.update_layout(
         title="Reference and real-time seismic intensity",
         xaxis_title="Time [s]",
@@ -831,5 +866,78 @@ def acceleration_figure(
     figure.update_layout(
         title=title,
         height=180 * channel_count + 120,
+    )
+    return apply_theme(figure)
+
+
+def long_period_spectrum_figure(
+    result: LongPeriodResult,
+    *,
+    title: str = "Absolute velocity response spectrum",
+) -> Any:
+    """Plot the absolute velocity response spectrum against the class bands.
+
+    The same view JMA publishes on its station pages: Sva for each period in
+    the band, over the class bands, so the class the record falls into is
+    readable directly off the figure. Drawn with the same shading, edge
+    strip, boundary lines, and labels as the intensity figures, in the colors
+    JMA itself uses for these classes.
+
+    The logarithmic axis spans the data with a margin, stretched up to the
+    class boundary the record is nearest and down no more than three decades,
+    so neither a quiet record nor a narrow spectrum ends up squashed against
+    an edge of a range it never approaches.
+    """
+    go, _, _ = require_plotly()
+    figure = go.Figure()
+    periods = np.asarray(result.periods_s, dtype=np.float64)
+    values = np.asarray(result.sva_cm_s, dtype=np.float64)
+    positive = values[values > 0.0]
+    peak = float(positive.max()) if positive.size else 1.0
+    floor = float(positive.min()) if positive.size else peak / 100.0
+
+    y_max = peak * 1.6
+    for lower, _upper in LONG_PERIOD_CLASS_INTERVALS.values():
+        if lower > 0.0 and peak < lower <= peak * 4.0:
+            y_max = max(y_max, lower * 1.25)
+            break
+    y_min = max(floor / 1.6, y_max / 1000.0)
+
+    _add_class_bands(
+        figure,
+        intervals=LONG_PERIOD_CLASS_INTERVALS,
+        colors=LONG_PERIOD_CLASS_COLORS,
+        labels={scale: scale.japanese for scale in LONG_PERIOD_CLASS_INTERVALS},
+        y_min=y_min,
+        y_max=y_max,
+        strip=True,
+        boundaries=True,
+        log_y=True,
+    )
+    figure.add_trace(
+        go.Scatter(
+            x=periods,
+            y=values,
+            mode="lines+markers",
+            name="Sva (horizontal composite)",
+            line=dict(PRIMARY_LINE),
+            marker={"size": 5, "color": LINE_COLORS["reference"]},
+            hovertemplate="%{x:.1f} s<br>%{y:.4g} cm/s<extra></extra>",
+        )
+    )
+    _add_endpoint_label(
+        figure,
+        go,
+        x=np.array([result.critical_period_s]),
+        y=np.array([result.max_sva_cm_s]),
+        color=LINE_COLORS["reference"],
+    )
+    figure.update_yaxes(range=[np.log10(y_min), np.log10(y_max)])
+    figure.update_layout(
+        title=f"{title} [damping {result.damping_ratio:g}]",
+        xaxis_title="Period [s]",
+        yaxis_title="Sva [cm/s]",
+        yaxis_type="log",
+        height=520,
     )
     return apply_theme(figure)

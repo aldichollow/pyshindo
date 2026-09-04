@@ -2,9 +2,15 @@
 
 ## 概要
 
-`pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式・Kunugi論文・関連特許(JP4229337B2/JP5946067B2/JP7681907B2)を根拠に、係数を式から都度導出する実装になっています(固定係数表の丸写しではありません)。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md) にあります。
+`pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
+
+計測震度に加えて、**長周期地震動階級**(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)とPGV(最大速度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、最大値で相対差2e-6程度で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+
+詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
 
 本パッケージは個人が趣味として開発しているものです。計算結果の正確性・完全性を保証するものではありませんので、ご利用は自己判断・自己責任でお願いします。
+
+なお、震度や長周期地震動階級の推定結果を継続的に第三者へ提供する行為は、気象業務法の予報業務許可(第17条)の対象になり得ます。本パッケージは記録済みデータを計算する関数群にすぎませんが、これを使って配信サービスを作る場合はご自身で確認してください。法的助言ではありません。
 
 ---
 
@@ -21,10 +27,15 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Exact rolling order statistics for a 60-second real-time window without discretizing intensity into fixed-width bins.
 - Stateful chunk and single-sample APIs whose results are invariant to chunk boundaries.
 - Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
+- Velocity by cumulative trapezoidal integration, and PGV -- with the baseline treatment left to the caller rather than applied silently.
+- The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Verified against JMA's own published response spectra to about 2e-6.
+- Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
 
 Relevant real-time algorithms are associated with patent documents. Read [PATENTS.md](PATENTS.md) before distribution or operational use. The MIT license covers copyright in this source code and is not a patent-clearance opinion.
+
+Separately: in Japan, providing intensity or long-period-class estimates to third parties on an ongoing basis can require a forecasting-business licence (気象業務法 Article 17). This package only computes values from recorded data, but check for yourself before building a service on it. Not legal advice.
 
 ## Installation
 
@@ -40,12 +51,13 @@ From a local checkout, editable:
 python -m pip install -e .
 ```
 
-Either way, add the optional Plotly figures with the `plot` extra:
+Either way, add the optional extras -- `plot` for the Plotly figures, `obspy` for
+reading formats through ObsPy:
 
 ```bash
-python -m pip install "pyshindo[plot] @ git+https://github.com/aldichollow/pyshindo.git"
+python -m pip install "pyshindo[plot,obspy] @ git+https://github.com/aldichollow/pyshindo.git"
 # or, from a checkout:
-python -m pip install -e ".[plot]"
+python -m pip install -e ".[plot,obspy]"
 ```
 
 ## Complete-record FFT calculation
@@ -105,6 +117,66 @@ print(trace.approximate_intensity_raw)
 print(trace.approximate_intensity)
 ```
 
+## Velocity and PGV
+
+```python
+from pyshindo import peak_ground_velocity, remove_offset
+
+pgv = peak_ground_velocity(remove_offset(acceleration), 100.0, unit="gal")
+```
+
+Velocity comes from cumulative trapezoidal integration and is always returned in
+cm/s (kine). Nothing is baseline-corrected on your behalf: integration cannot
+distinguish a baseline error from real long-period motion, so a record with a
+nonzero mean integrates into a linearly drifting velocity. Apply
+`remove_offset`, `detrend_acceleration`, or a high-pass filter first, and say
+which one you used. See [`examples/06_peak_velocity.py`](examples/06_peak_velocity.py).
+
+`peak_ground_velocity` takes the resultant of whichever components you pass, the
+same as `peak_ground_acceleration`: three components give the three-component
+resultant, two horizontals give the horizontal PGV.
+
+## Long-period ground motion class
+
+```python
+from pyshindo.long_period import calculate_long_period_class
+
+result = calculate_long_period_class(horizontal_acceleration, 100.0, unit="gal")
+print(result.long_period_class)   # "0" through "4"
+print(result.max_sva_cm_s)        # absolute velocity response maximum, cm/s
+print(result.critical_period_s)
+for band in result.bands:         # the per-band classes JMA also reports
+    print(band.japanese_label, band.long_period_class)
+```
+
+A different quantity from instrumental intensity and a different calculation:
+horizontal components only, a bank of damped oscillators covering 1.6 to 7.8
+seconds, and the largest absolute velocity response. `LongPeriodEstimator`
+gives the same numbers incrementally for streaming input.
+
+Checked against JMA's own published absolute velocity response spectra: the
+record maximum agrees to about 2e-6 relative. See
+[`docs/long-period.md`](docs/long-period.md) for the algorithm, its primary
+sources, and that comparison, and
+[`examples/08_long_period.py`](examples/08_long_period.py) to reproduce it.
+
+## Reading other formats through ObsPy
+
+```python
+import obspy
+from pyshindo.obspy_interop import from_obspy_stream
+
+stream = obspy.read("...").select(station="...")
+record = from_obspy_stream(stream, unit="gal")
+```
+
+A thin adapter, not a reader: it converts a stream that is already in
+acceleration units into the arrays used here and never resamples, trims,
+merges, rotates, or rescales. `unit` is required rather than detected, because
+SEED and the formats around it carry no dependable physical-unit field. See
+[`docs/data.md`](docs/data.md) and
+[`examples/07_obspy_interop.py`](examples/07_obspy_interop.py).
+
 ## Sampling rates other than 100 Hz
 
 The FFT calculation accepts any positive sampling rate and evaluates the published response at the corresponding FFT frequencies. A warning is emitted because comparability still depends on the source bandwidth, anti-aliasing, record preparation, and validation data.
@@ -121,22 +193,49 @@ The selected design is recorded in `result.filter_name`. An explicit 2012 reques
 
 `pyshindo.io` parses the seven-line JMA strong-motion text header and can download one explicitly selected URL. No observed waveform is bundled. See [`docs/data.md`](docs/data.md).
 
-Plotly figures use a restrained package theme. Intensity colors 1 through 7 follow the JMA web color guide; the guide does not assign intensity 0 a color, so the neutral intensity-0 background is identified as a package choice.
+Plotly figures use a restrained package theme. Intensity colors 1 through 7 follow the JMA web color guide; the guide does not assign intensity 0 a color, so the neutral intensity-0 background is identified as a package choice. The long-period class colors are the ones JMA uses on its own long-period observation pages.
+
+![pyshindo](docs/images/hero.png)
+
+<sub>1つの実記録から計算した例。2026年8月23日 茨城県南部の地震 M5.9、気象庁 浦安市日の出観測点。
+上段は0.3秒継続の閾値がどこで選ばれるか、左下は同じ記録に対するリアルタイム近似とFFT参照計算がほぼ一致すること、
+右下は長周期地震動階級を示しています。データ出典: 気象庁「長周期地震動の観測結果」。</sub>
 
 ## Documentation
 
 - [Algorithm guide (Japanese)](docs/algorithm.md)
 - [API reference (Japanese)](docs/api.md)
+- [Long-period ground motion class (Japanese)](docs/long-period.md)
 - [Observed data I/O (Japanese)](docs/data.md)
+
+## Examples
+
+Each file in [`examples/`](examples/) is a runnable script written with `# %%`
+cell markers, so it can be executed top to bottom or stepped through in an
+interactive window.
+
+| | |
+|---|---|
+| [`00_quickstart.py`](examples/00_quickstart.py) | Every headline result in one page: measured intensity, real-time intensity, PGV, long-period class |
+| [`01_measured_intensity.py`](examples/01_measured_intensity.py) | The FFT reference calculation and its intermediate waveforms |
+| [`02_realtime_intensity.py`](examples/02_realtime_intensity.py) | Real-time replay, and comparison against the FFT reference |
+| [`03_official_jma_record.py`](examples/03_official_jma_record.py) | Reproducing JMA's own published intensity from a downloaded record |
+| [`04_filter_designs.py`](examples/04_filter_designs.py) | The three causal filters and their named analog stages |
+| [`05_streaming_sample_api.py`](examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time |
+| [`06_peak_velocity.py`](examples/06_peak_velocity.py) | PGV, and why baseline treatment has to be your choice |
+| [`07_obspy_interop.py`](examples/07_obspy_interop.py) | Converting an ObsPy stream into this package's arrays |
+| [`08_long_period.py`](examples/08_long_period.py) | Long-period class, per-band classes, and verification against JMA's published spectra |
 
 ## Development
 
 ```bash
-python -m pip install -e ".[dev,plot]"
+python -m pip install -e ".[dev,plot,obspy]"
 pytest
 ruff check .
 mypy src/pyshindo
 ```
+
+The ObsPy interoperability tests skip themselves when ObsPy is not installed.
 
 ## Primary references
 
