@@ -52,7 +52,15 @@ class FilterStage:
 
 @dataclass(frozen=True, slots=True)
 class RecursiveFilterDesign:
-    """Second-order-section representation of a published approximation filter."""
+    """Second-order-section representation of a published approximation filter.
+
+    ``sos`` stays writable: :func:`scipy.signal.sosfilt` requires a mutable
+    buffer even though it only reads it. A design is meant to be treated as
+    immutable configuration all the same -- mutating ``sos`` after handing a
+    design to :class:`~pyshindo.realtime.RealtimeIntensityEstimator` is
+    unsupported, since the estimator takes its own private copy precisely to
+    stay correct if a caller does this.
+    """
 
     name: str
     sampling_rate_hz: float

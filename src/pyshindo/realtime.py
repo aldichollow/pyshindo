@@ -150,11 +150,17 @@ class RealtimeIntensityEstimator:
         self._record_max = -np.inf
         self._has_intensity = False
 
+        # A private copy, taken once here: if a caller mutates filter_design.sos
+        # after construction (filter_design can be handed in and kept by the
+        # caller), process() and process_sample() must still agree, which they
+        # cannot if one of them keeps reading the live, mutable design.
+        self._sos: np.ndarray = np.array(self.filter_design.sos, dtype=np.float64, copy=True)
+
         # Cached in plain Python types for process_sample(): avoids re-deriving the unit
-        # factor and re-reading numpy scalars from self.filter_design.sos on every sample.
+        # factor and re-reading numpy scalars from self._sos on every sample.
         self._gal_factor: float = conversion_factor(self.input_unit, AccelerationUnit.GAL)
         self._sos_py: tuple[tuple[float, float, float, float, float], ...] = tuple(
-            (row[0], row[1], row[2], row[4], row[5]) for row in self.filter_design.sos.tolist()
+            (row[0], row[1], row[2], row[4], row[5]) for row in self._sos.tolist()
         )
 
     @property
@@ -212,7 +218,7 @@ class RealtimeIntensityEstimator:
             )
         self._component_count = component_count
         self._zi = np.zeros(
-            (self.filter_design.sos.shape[0], 2, component_count),
+            (self._sos.shape[0], 2, component_count),
             dtype=np.float64,
         )
 
@@ -245,7 +251,7 @@ class RealtimeIntensityEstimator:
             raise RuntimeError("Filter state was not initialized.")
         filter_started = time.perf_counter()
         filtered, self._zi = sosfilt(
-            self.filter_design.sos,
+            self._sos,
             values_gal,
             axis=0,
             zi=self._zi,

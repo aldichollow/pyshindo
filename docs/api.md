@@ -55,7 +55,7 @@ realtime_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarr
 
 `process()` と `process_sample()` は同一インスタンス上で自由に混在できます。チャンクの分割位置に結果は依存しません。`RealtimeChunk.timing` / `RealtimeSample.elapsed_s` に実測所要時間が入ります。
 
-`RealtimeFilter`: `AUTO`(既定、100 Hz以上でkunugi2012・80 Hz未満でjp7681907-lowrateへ自動切替) / `KUNUGI_2008` / `KUNUGI_2012` / `JP7681907_LOWRATE`。
+`RealtimeFilter`: `AUTO`(既定、80 Hz以上でkunugi2012・80 Hz未満でjp7681907-lowrateへ自動切替) / `KUNUGI_2008` / `KUNUGI_2012` / `JP7681907_LOWRATE`。
 
 ## 両者の比較
 
@@ -138,6 +138,17 @@ peak_ground_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> flo
 
 `peak_ground_velocity` は渡された成分の合成値を返します(`peak_ground_acceleration` と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGVになります。どちらを採るかは解析側の選択なので、この関数側では固定していません。
 
+気象庁「長周期地震動の観測結果」ページが`max.csv`で公表している最大速度は、この既定(補正なしの台形積分)とは一致しません。代わりに、長周期地震動階級の計算で使っている20秒ハイパスを加速度に先に適用してから積分すると、268観測点で相対誤差の中央値0.01%程度まで一致します。このハイパスは`pyshindo.long_period.apply_ground_motion_high_pass`として公開しています:
+
+```python
+from pyshindo.long_period import apply_ground_motion_high_pass
+
+filtered = apply_ground_motion_high_pass(acceleration, sampling_rate_hz=100.0, unit="gal")
+pgv = peak_ground_velocity(filtered, sampling_rate_hz=100.0, unit="gal")
+```
+
+この関係は一次資料が明記したものではなく、実証的に確認した経験則です。詳細と検証結果は [`docs/validation.md`](validation.md) を参照してください。
+
 使用例は [`examples/06_peak_velocity.py`](../examples/06_peak_velocity.py) にあります。
 
 ## 単位変換
@@ -189,7 +200,9 @@ result.bands                 # 周期帯別(1秒台〜7秒台)の最大Svaと階
 - `"filter"`(既定): 周期ごとの2次IIRフィルタとしてまとめて解きます。逐次ループがコンパイル済みコードに移るため約13倍高速です。
 - `"recurrence"`: 気象庁の資料どおりの状態空間漸化式をPythonで1サンプルずつ進めます。`LongPeriodEstimator` が使っているのはこちらなので、一括結果を逐次結果とビット単位で一致させたい場合に選びます。
 
-既定の `"filter"` と `"recurrence"` の差は浮動小数点の丸めのみで、相対1e-12程度です。階級判定に影響しないことは回帰テストで確認しています。
+既定の `"filter"` と `"recurrence"` の差は浮動小数点の丸めのみで、相対1e-12程度です。通常のデータでは階級判定に影響しませんが、Svaが階級の閾値からちょうど丸め幅程度しか離れていない場合、まれにどちらの階級になるかが1ソルバー分だけ変わり得ます(これは実装の不具合ではなく、閾値ぴったりの値を機械精度で扱う以上避けられない挙動です)。逐次処理との厳密な一致が必要な場合は `solver="recurrence"` を使ってください。
+
+この計算の内部で使っている20秒ハイパスは `apply_ground_motion_high_pass` として単独でも呼べます(水平2成分に限らず、任意の成分数に使えます)。気象庁が公表している最大速度の再現に使えることを確認しています(上記「速度・PGV」の節、[`docs/validation.md`](validation.md))。
 
 アルゴリズム・一次資料・公式値との照合結果は [`docs/long-period.md`](long-period.md)、公式値との照合の全体像は [`docs/validation.md`](validation.md) を参照してください。
 

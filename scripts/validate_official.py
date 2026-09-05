@@ -39,13 +39,9 @@ from typing import Final
 
 import numpy as np
 
-from pyshindo import (
-    calculate_measured_intensity,
-    component_peak_velocity,
-    peak_ground_velocity,
-)
+from pyshindo import calculate_measured_intensity, component_peak_velocity, peak_ground_velocity
 from pyshindo.io import download_jma_record, parse_jma_bytes
-from pyshindo.long_period import calculate_long_period_class
+from pyshindo.long_period import apply_ground_motion_high_pass, calculate_long_period_class
 
 BASE_URL: Final = "https://www.data.jma.go.jp/eew/data/ltpgm"
 DEFAULT_EVENT_ID: Final = "20260823020050"
@@ -130,6 +126,12 @@ class StationComparison:
             np.abs(self.pgv - self.official_pgv)[significant]
             / self.official_pgv[significant]
         )
+
+    @property
+    def pgv_agrees(self) -> bool:
+        """Return whether every peak velocity above the noise floor is within tolerance."""
+        error = self.pgv_relative_error
+        return bool(error.size == 0 or np.all(error <= PEAK_RELATIVE_TOLERANCE))
 
     @property
     def long_period_agrees(self) -> bool:
@@ -255,6 +257,10 @@ def compare_stations(
         rate = record.metadata.sampling_rate_hz
         intensity = calculate_measured_intensity(acceleration, rate, unit="gal")
         long_period = calculate_long_period_class(acceleration[:, :2], rate, unit="gal")
+        # max.csv's peak velocity is not the integral of the raw acceleration --
+        # see docs/validation.md -- but matches closely once the same 20-second
+        # high-pass used for the long-period class is applied first.
+        filtered_for_velocity = apply_ground_motion_high_pass(acceleration, rate, unit="gal")
         yield StationComparison(
             code=code,
             name=entry.name,
@@ -264,8 +270,8 @@ def compare_stations(
             pga=np.append(intensity.input_component_pga_gal, intensity.input_pga_gal),
             official_pga=entry.pga,
             pgv=np.append(
-                component_peak_velocity(acceleration, rate, unit="gal"),
-                peak_ground_velocity(acceleration, rate, unit="gal"),
+                component_peak_velocity(filtered_for_velocity, rate, unit="gal"),
+                peak_ground_velocity(filtered_for_velocity, rate, unit="gal"),
             ),
             official_pgv=entry.pgv,
             long_period_class=long_period.long_period_class.value,
@@ -312,6 +318,7 @@ def report(comparisons: list[StationComparison], spectra: list[SpectrumCompariso
     pga_ok = sum(c.pga_agrees for c in comparisons)
     pga_error = np.concatenate([c.pga_relative_error for c in comparisons]) * 100.0
     long_period_ok = sum(c.long_period_agrees for c in comparisons)
+    pgv_ok = sum(c.pgv_agrees for c in comparisons)
     pgv_error = np.concatenate([c.pgv_relative_error for c in comparisons]) * 100.0
 
     lines.append(f"Stations compared: {total}\n")
@@ -337,9 +344,10 @@ def report(comparisons: list[StationComparison], spectra: list[SpectrumCompariso
             f"{len(spectra)} stations, {peak:.1e} at the maximum, {worst:.1e} worst period |"
         )
     lines.append(
-        f"| Peak velocity, components at or above {SIGNIFICANT_PGV_CM_S:.0f} cm/s | max.csv | "
-        f"median {np.median(pgv_error):.1f} percent, 95th percentile "
-        f"{np.percentile(pgv_error, 95):.1f} percent |"
+        f"| Peak velocity, components at or above {SIGNIFICANT_PGV_CM_S:.0f} cm/s "
+        f"(20-second high-pass applied first) | max.csv | "
+        f"median {np.median(pgv_error):.1e} percent, {pgv_ok}/{total} stations within "
+        f"{PEAK_RELATIVE_TOLERANCE * 100:.0f} percent |"
     )
 
     disagreeing = [

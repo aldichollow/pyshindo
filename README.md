@@ -4,13 +4,13 @@
 
 `pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
 
-計測震度に加えて、**長周期地震動階級**(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)とPGV(最大速度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、最大値で相対差2e-6程度で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+計測震度に加えて、長周期地震動階級(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)とPGV(最大速度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
 
 詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
 
 本パッケージは個人が趣味として開発しているものです。計算結果の正確性・完全性を保証するものではありませんので、ご利用は自己判断・自己責任でお願いします。
 
-なお、震度や長周期地震動階級の推定結果を継続的に第三者へ提供する行為は、気象業務法の予報業務許可(第17条)の対象になり得ます。本パッケージは記録済みデータを計算する関数群にすぎませんが、これを使って配信サービスを作る場合はご自身で確認してください。法的助言ではありません。
+なお、気象業務法の予報業務許可(第17条)は「今後生じる地震動を予想して発表する」行為が対象で、本パッケージが行う「既に観測された記録から事後的に震度や長周期地震動階級を計算する」こととは性質が異なります([予報業務の許可について](https://www.jma.go.jp/jma/kishou/minkan/kyoka.html))。
 
 ---
 
@@ -28,14 +28,14 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Stateful chunk and single-sample APIs whose results are invariant to chunk boundaries.
 - Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
 - Velocity by cumulative trapezoidal integration, and PGV -- with the baseline treatment left to the caller rather than applied silently.
-- The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Verified against JMA's own published response spectra to about 2e-6.
+- The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Every class matches JMA's own published values across 268 stations of two earthquakes; the response spectra themselves agree to about 1e-5, worst case, over the stations checked.
 - Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
 
 Relevant real-time algorithms are associated with patent documents. Read [PATENTS.md](PATENTS.md) before distribution or operational use. The MIT license covers copyright in this source code and is not a patent-clearance opinion.
 
-Separately: in Japan, providing intensity or long-period-class estimates to third parties on an ongoing basis can require a forecasting-business licence (気象業務法 Article 17). This package only computes values from recorded data, but check for yourself before building a service on it. Not legal advice.
+Separately: Japan's forecasting-business licence (気象業務法 Article 17) covers _predicting_ ground motion before it happens and announcing that prediction, which is a different activity from what this package does -- computing intensity or long-period class _after the fact_ from an already-recorded waveform ([overview, in Japanese](https://www.jma.go.jp/jma/kishou/minkan/kyoka.html)). Where the line falls in a given use case is not something this note can settle, so it is not legal advice.
 
 ## Installation
 
@@ -136,6 +136,14 @@ which one you used. See [`examples/06_peak_velocity.py`](examples/06_peak_veloci
 same as `peak_ground_acceleration`: three components give the three-component
 resultant, two horizontals give the horizontal PGV.
 
+JMA's own published peak velocity, in the `max.csv` of a long-period ground
+motion observation page, does not match this default -- but does match, to
+about 0.01 percent across 268 stations, once the same 20-second high-pass used
+for the long-period class is applied to the acceleration first
+(`pyshindo.long_period.apply_ground_motion_high_pass`). See
+[`docs/validation.md`](docs/validation.md) for the finding and
+[`docs/api.md`](docs/api.md) for the recipe.
+
 ## Long-period ground motion class
 
 ```python
@@ -154,11 +162,13 @@ horizontal components only, a bank of damped oscillators covering 1.6 to 7.8
 seconds, and the largest absolute velocity response. `LongPeriodEstimator`
 gives the same numbers incrementally for streaming input.
 
-Checked against JMA's own published absolute velocity response spectra: the
-record maximum agrees to about 2e-6 relative. See
-[`docs/long-period.md`](docs/long-period.md) for the algorithm, its primary
-sources, and that comparison, and
-[`examples/08_long_period.py`](examples/08_long_period.py) to reproduce it.
+Checked against JMA's own published absolute velocity response spectra: across
+268 stations of two earthquakes, every long-period class matches, and the
+spectra themselves agree to about 1e-5, worst case among the stations checked.
+See [`docs/long-period.md`](docs/long-period.md) for the algorithm and its
+primary sources, [`docs/validation.md`](docs/validation.md) for the full
+comparison, and [`examples/08_long_period.py`](examples/08_long_period.py) to
+reproduce it.
 
 ## Reading other formats through ObsPy
 
@@ -215,17 +225,17 @@ Each file in [`examples/`](examples/) is a runnable script written with `# %%`
 cell markers, so it can be executed top to bottom or stepped through in an
 interactive window.
 
-| | |
-|---|---|
-| [`00_quickstart.py`](examples/00_quickstart.py) | Every headline result in one page: measured intensity, real-time intensity, PGV, long-period class |
-| [`01_measured_intensity.py`](examples/01_measured_intensity.py) | The FFT reference calculation and its intermediate waveforms |
-| [`02_realtime_intensity.py`](examples/02_realtime_intensity.py) | Real-time replay, and comparison against the FFT reference |
-| [`03_official_jma_record.py`](examples/03_official_jma_record.py) | Reproducing JMA's own published intensity from a downloaded record |
-| [`04_filter_designs.py`](examples/04_filter_designs.py) | The three causal filters and their named analog stages |
-| [`05_streaming_sample_api.py`](examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time |
-| [`06_peak_velocity.py`](examples/06_peak_velocity.py) | PGV, and why baseline treatment has to be your choice |
-| [`07_obspy_interop.py`](examples/07_obspy_interop.py) | Converting an ObsPy stream into this package's arrays |
-| [`08_long_period.py`](examples/08_long_period.py) | Long-period class, per-band classes, and verification against JMA's published spectra |
+|                                                                     |                                                                                                    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| [`00_quickstart.py`](examples/00_quickstart.py)                     | Every headline result in one page: measured intensity, real-time intensity, PGV, long-period class |
+| [`01_measured_intensity.py`](examples/01_measured_intensity.py)     | The FFT reference calculation and its intermediate waveforms                                       |
+| [`02_realtime_intensity.py`](examples/02_realtime_intensity.py)     | Real-time replay, and comparison against the FFT reference                                         |
+| [`03_official_jma_record.py`](examples/03_official_jma_record.py)   | Reproducing JMA's own published intensity from a downloaded record                                 |
+| [`04_filter_designs.py`](examples/04_filter_designs.py)             | The three causal filters and their named analog stages                                             |
+| [`05_streaming_sample_api.py`](examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time                                                         |
+| [`06_peak_velocity.py`](examples/06_peak_velocity.py)               | PGV, and why baseline treatment has to be your choice                                              |
+| [`07_obspy_interop.py`](examples/07_obspy_interop.py)               | Converting an ObsPy stream into this package's arrays                                              |
+| [`08_long_period.py`](examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
 
 ## Development
 

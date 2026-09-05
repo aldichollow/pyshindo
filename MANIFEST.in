@@ -1,0 +1,5 @@
+include PATENTS.md
+include CHANGELOG.md
+recursive-include docs *.md *.png
+recursive-include examples *.py
+recursive-include scripts *.py

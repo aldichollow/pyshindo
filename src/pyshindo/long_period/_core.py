@@ -128,10 +128,12 @@ def design_high_pass(sampling_rate_hz: float) -> HighPassDesign:
     )
 
 
-def high_pass_initial_state(design: HighPassDesign) -> FloatArray:
-    """Return zero filter state for the two horizontal channels."""
+def high_pass_initial_state(
+    design: HighPassDesign, component_count: int = HORIZONTAL_COMPONENTS
+) -> FloatArray:
+    """Return zero filter state for ``component_count`` channels."""
     order = max(len(design.numerator), len(design.denominator)) - 1
-    return np.zeros((order, HORIZONTAL_COMPONENTS))
+    return np.zeros((order, component_count))
 
 
 def apply_high_pass(

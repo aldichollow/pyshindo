@@ -11,7 +11,7 @@ from numpy.exceptions import AxisError
 
 from ..exceptions import InvalidAccelerationError, NonstandardSamplingRateWarning
 from ..units import AccelerationUnit, ArrayLike, FloatArray, to_gal
-from ..validation import validate_sampling_rate
+from ..validation import as_acceleration_array, validate_sampling_rate
 from ._core import (
     REFERENCE_SAMPLING_RATE_HZ,
     OscillatorSolver,
@@ -82,12 +82,19 @@ def as_horizontal_acceleration(
 
 
 def resolve_periods(periods_s: npt.ArrayLike | None) -> FloatArray:
-    """Return the period grid to evaluate, defaulting to the official 32."""
+    """Return the period grid to evaluate, defaulting to the official 32.
+
+    The returned array is always read-only. It is reused as-is for the
+    official grid, and freshly copied from any caller-supplied grid, so that
+    neither a caller's array nor a value handed back on a result can corrupt
+    the grid a later call resolves to.
+    """
     if periods_s is None:
         return OFFICIAL_PERIODS_S
-    periods = np.asarray(periods_s, dtype=np.float64)
+    periods = np.array(periods_s, dtype=np.float64)
     if periods.ndim != 1 or periods.size == 0:
         raise ValueError("periods_s must be a non-empty one-dimensional array.")
+    periods.setflags(write=False)
     return periods
 
 
@@ -96,6 +103,47 @@ def uses_official_period_grid(periods_s: FloatArray) -> bool:
     return periods_s.shape == OFFICIAL_PERIODS_S.shape and bool(
         np.array_equal(periods_s, OFFICIAL_PERIODS_S)
     )
+
+
+def apply_ground_motion_high_pass(
+    acceleration: ArrayLike,
+    sampling_rate_hz: float = 100.0,
+    *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
+    component_axis: int = -1,
+    warn_nonstandard_rate: bool = True,
+) -> FloatArray:
+    """Apply the 20-second high-pass this module uses, to any number of components.
+
+    This is the same filter :func:`calculate_long_period_class` applies to the
+    two horizontal components before driving the oscillator bank, generalized
+    to any component count so it can be applied on its own -- most usefully to
+    all three components, ahead of :func:`pyshindo.velocity.integrate_to_velocity`.
+
+    That combination reproduces the peak velocity JMA publishes in the ``max.csv``
+    of a long-period ground motion observation page to about 0.01 percent median
+    relative error, against roughly 2 percent from integrating the raw
+    acceleration -- see ``docs/validation.md``. ``max.csv`` documents this only
+    as "the maximum velocity over the observation period," and separately notes
+    that these values can differ from JMA's own strong-motion observation
+    report, so this is an empirical finding rather than a documented procedure:
+    verified across 268 stations of two earthquakes, but not a guarantee for
+    every record.
+    """
+    rate = validate_sampling_rate(sampling_rate_hz, warn_nonstandard=False)
+    if warn_nonstandard_rate:
+        warn_if_non_reference_rate(rate, stacklevel=3)
+    parsed_unit = AccelerationUnit.parse(unit)
+    values = as_acceleration_array(
+        acceleration,
+        component_axis=component_axis,
+        warn_fewer_components=False,
+    )
+    values_gal = to_gal(values, parsed_unit, copy=False)
+    design = design_high_pass(rate)
+    state = high_pass_initial_state(design, values_gal.shape[1])
+    filtered, _ = apply_high_pass(design, values_gal, state)
+    return filtered
 
 
 def summarize_bands(

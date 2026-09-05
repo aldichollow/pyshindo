@@ -12,6 +12,7 @@ from pyshindo import (
     synthetic_three_component_motion,
     time_axis,
 )
+from pyshindo.long_period import apply_ground_motion_high_pass
 from pyshindo.plotting import acceleration_figure
 
 # %% Generate a record and add a small instrument offset
@@ -46,13 +47,24 @@ print(f"Expected drift after {time_s[-1]:.0f} s: {final_drift:.3f} cm/s")
 print(f"Observed final velocity:      {np.max(np.abs(raw_velocity[-1])):.3f} cm/s")
 
 # %% Compare baseline treatments
+# apply_ground_motion_high_pass is the 20-second high-pass the long-period
+# ground motion class uses, generalized to any component count. It is a
+# specific published filter, not a general-purpose recommendation -- but it
+# also happens to reproduce JMA's own published peak velocity for a
+# long-period observation record to about 0.01 percent, where the other
+# treatments here do not get closer than a percent or two. See
+# docs/validation.md for that finding, verified against 268 real stations.
 for label, prepared in (
     ("raw (no correction)", drifting_gal),
     ("remove_offset", remove_offset(drifting_gal)),
     ("detrend_acceleration", detrend_acceleration(drifting_gal)),
+    (
+        "apply_ground_motion_high_pass",
+        apply_ground_motion_high_pass(drifting_gal, sampling_rate_hz),
+    ),
 ):
     pgv = peak_ground_velocity(prepared, sampling_rate_hz)
-    print(f"{label:22s} PGV = {pgv:7.3f} cm/s")
+    print(f"{label:29s} PGV = {pgv:7.3f} cm/s")
 
 # %% Per-component peaks, in the same shape as component_peak_acceleration
 peaks = component_peak_velocity(remove_offset(drifting_gal), sampling_rate_hz)

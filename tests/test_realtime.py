@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import pytest
 
+from pyshindo.filters import design_realtime_filter
 from pyshindo.realtime import RealtimeIntensityEstimator, calculate_realtime_intensity
 
 
@@ -62,6 +63,23 @@ def test_nonstandard_stable_rate_warns_but_calculates() -> None:
         result = calculate_realtime_intensity(values, sampling_rate_hz=80.0)
     assert result.intensity_raw.shape == (800,)
     assert captured
+
+
+def test_mutating_a_shared_filter_design_after_construction_is_isolated() -> None:
+    design = design_realtime_filter(100.0, filter_name="kunugi-2012")
+    reference = RealtimeIntensityEstimator(
+        100.0, filter_design=design_realtime_filter(100.0, filter_name="kunugi-2012")
+    )
+    estimator = RealtimeIntensityEstimator(100.0, filter_design=design)
+    values = _record()[:500]
+
+    reference_output = np.array(
+        [reference.process_sample(sample).filtered_acceleration_gal for sample in values]
+    )
+    design.sos[0, 0] *= 3.0  # mutate the caller's copy after the estimator was built
+    chunk_output = estimator.process(values.copy()).filtered_acceleration_gal
+
+    np.testing.assert_allclose(chunk_output, reference_output, rtol=1e-9, atol=1e-9)
 
 
 def test_single_sample_path_matches_chunk_path() -> None:

@@ -82,7 +82,13 @@ def _time_axis(
 
 def _component_labels(count: int, names: Sequence[str] | None) -> tuple[str, ...]:
     if names is None:
-        return _COMPONENT_NAMES[:count]
+        # NS/EW/UD only applies up to three channels; beyond that there is no
+        # default orientation to name, so falling back to _COMPONENT_NAMES[:count]
+        # would silently return fewer labels than there are channels, and every
+        # caller that zips labels against channels would drop the remainder.
+        if count <= len(_COMPONENT_NAMES):
+            return _COMPONENT_NAMES[:count]
+        return tuple(f"Channel {index + 1}" for index in range(count))
     labels = tuple(names)
     if len(labels) != count:
         raise ValueError(f"component_names must contain {count} labels.")
@@ -834,6 +840,8 @@ def acceleration_figure(
         values = values[:, np.newaxis]
     if values.ndim != 2:
         raise ValueError("acceleration must be one- or two-dimensional.")
+    if values.size == 0:
+        raise ValueError("acceleration must contain at least one sample and one channel.")
     time = _time_axis(values.shape[0], sampling_rate_hz, time_s)
     labels = _component_labels(values.shape[1], component_names)
     channel_count = values.shape[1]
