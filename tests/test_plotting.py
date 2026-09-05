@@ -106,6 +106,23 @@ def test_acceleration_figure_stacks_one_row_per_channel() -> None:
     assert shared_limit == pytest.approx(float(np.max(np.abs(values))) * 1.05)
 
 
+def test_acceleration_figure_draws_every_channel_beyond_three() -> None:
+    values = np.random.default_rng(0).standard_normal((200, 4))
+    figure = acceleration_figure(values, 100.0)
+    assert len(figure.data) == 4
+    assert [trace.name for trace in figure.data] == [
+        "Channel 1",
+        "Channel 2",
+        "Channel 3",
+        "Channel 4",
+    ]
+
+
+def test_acceleration_figure_rejects_an_empty_record() -> None:
+    with pytest.raises(ValueError, match="at least one sample"):
+        acceleration_figure(np.zeros((0, 3)), 100.0)
+
+
 def test_long_period_spectrum_figure_shades_the_class_bands() -> None:
     values = np.ascontiguousarray(
         synthetic_three_component_motion(duration_s=20.0)[:, :2]

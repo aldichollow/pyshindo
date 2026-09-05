@@ -30,6 +30,7 @@ from ..units import FloatArray
 PERIOD_DECISECONDS: Final = tuple(range(16, 80, 2))
 OFFICIAL_PERIODS_S: Final[FloatArray] = np.array(PERIOD_DECISECONDS, dtype=np.float64) / 10.0
 """The 32 periods JMA evaluates: 1.6, 1.8, ..., 7.8 seconds."""
+OFFICIAL_PERIODS_S.setflags(write=False)
 
 OFFICIAL_DAMPING_RATIO: Final = 0.05
 """Damping ratio h for the published class definition (5 percent)."""

@@ -15,7 +15,7 @@ See ``docs/long-period.md`` for the algorithm and its primary sources.
 """
 
 from ._core import OscillatorSolver
-from .calculation import calculate_long_period_class
+from .calculation import apply_ground_motion_high_pass, calculate_long_period_class
 from .models import (
     LongPeriodBandResult,
     LongPeriodResult,
@@ -46,6 +46,7 @@ __all__ = [
     "LongPeriodTiming",
     "LongPeriodUpdate",
     "OscillatorSolver",
+    "apply_ground_motion_high_pass",
     "band_period_range_s",
     "calculate_long_period_class",
     "classify_long_period",

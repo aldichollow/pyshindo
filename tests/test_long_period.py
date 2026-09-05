@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 from scipy import linalg, signal
@@ -12,6 +14,7 @@ from pyshindo.long_period import (
     LongPeriodClass,
     LongPeriodEstimator,
     _core,
+    apply_ground_motion_high_pass,
     band_period_range_s,
     calculate_long_period_class,
     classify_long_period,
@@ -80,6 +83,32 @@ def test_non_reference_rate_reproduces_the_published_design_at_100_hz() -> None:
     reconstructed = np.real(np.poly([np.exp(pole / 100.0), np.conj(np.exp(pole / 100.0))]))
     assert np.max(np.abs(reconstructed - published.denominator)) < 1e-8
     assert zeta == pytest.approx(1 / np.sqrt(2), abs=1e-6)
+
+
+def test_ground_motion_high_pass_matches_the_internal_two_component_path() -> None:
+    # apply_ground_motion_high_pass is the same filter calculate_long_period_class
+    # applies internally, generalized to any component count; on two horizontal
+    # components it must agree with the internal path exactly.
+    values = horizontal_record(duration_s=5.0)
+    design = _core.design_high_pass(RATE)
+    state = _core.high_pass_initial_state(design)
+    expected, _ = _core.apply_high_pass(design, values, state)
+    np.testing.assert_array_equal(apply_ground_motion_high_pass(values, RATE), expected)
+
+
+@pytest.mark.parametrize("component_count", [1, 2, 3])
+def test_ground_motion_high_pass_accepts_any_component_count(component_count: int) -> None:
+    values = horizontal_record(duration_s=2.0)[:, :1].repeat(component_count, axis=1)
+    filtered = apply_ground_motion_high_pass(values, RATE)
+    assert filtered.shape == values.shape
+
+
+def test_ground_motion_high_pass_blocks_a_constant_offset() -> None:
+    # The filter's natural period is about 19.5 s, so the step transient needs
+    # tens of seconds, not a handful, to decay.
+    offset = np.full((6000, 3), 5.0)
+    filtered = apply_ground_motion_high_pass(offset, RATE)
+    assert np.max(np.abs(filtered[-1])) < 1e-5
 
 
 # --------------------------------------------------------------------------
@@ -278,12 +307,26 @@ def test_both_solvers_agree_to_floating_point_rounding() -> None:
     fast = calculate_long_period_class(values, RATE, solver="filter")
     reference = calculate_long_period_class(values, RATE, solver="recurrence")
     # Same equation, different arithmetic order, so agreement is at rounding
-    # level rather than exact -- but the class must never be able to differ.
+    # level rather than exact. This record's Sva is nowhere near a class
+    # threshold, so the class also agrees here -- but that is a property of
+    # this record, not a guarantee: see the boundary test below.
     np.testing.assert_allclose(fast.sva_cm_s, reference.sva_cm_s, rtol=1e-10)
     assert fast.long_period_class is reference.long_period_class
     assert [b.long_period_class for b in fast.bands] == [
         b.long_period_class for b in reference.bands
     ]
+
+
+def test_solvers_can_disagree_on_the_class_right_at_a_threshold() -> None:
+    # classify_long_period is lower-bound inclusive, so a value that floating-
+    # point rounding pushes to either side of a threshold can classify
+    # differently even though the two values agree to 13 significant figures.
+    # This is not a solver defect: it is what evaluating a step function at a
+    # machine-precision-wide margin around its jump always does.
+    just_below = math.nextafter(15.0, 0.0)
+    just_above = math.nextafter(15.0, math.inf)
+    assert classify_long_period(just_below) is LongPeriodClass.ONE
+    assert classify_long_period(just_above) is LongPeriodClass.TWO
 
 
 def test_retained_response_agrees_between_solvers() -> None:
@@ -423,6 +466,30 @@ def test_invalid_shapes_and_values_are_rejected() -> None:
     broken[3, 1] = np.nan
     with pytest.raises(InvalidAccelerationError, match="non-finite"):
         calculate_long_period_class(broken, RATE)
+
+
+def test_official_period_grid_cannot_be_corrupted_through_a_result() -> None:
+    values = horizontal_record(duration_s=2.0)
+    result = calculate_long_period_class(values, RATE)
+    with pytest.raises(ValueError, match="read-only"):
+        result.periods_s[0] = 99.0
+    # A later default-grid call must be unaffected by the attempt above.
+    assert calculate_long_period_class(values, RATE).periods_s[0] == OFFICIAL_PERIODS_S[0]
+
+
+def test_custom_period_grid_is_copied_and_read_only() -> None:
+    periods = np.array([2.0, 4.0, 6.0])
+    result = calculate_long_period_class(horizontal_record(duration_s=2.0), RATE, periods_s=periods)
+    periods[0] = 99.0
+    assert result.periods_s[0] == 2.0
+    with pytest.raises(ValueError, match="read-only"):
+        result.periods_s[0] = 99.0
+
+
+def test_estimator_periods_s_is_read_only() -> None:
+    estimator = LongPeriodEstimator(RATE)
+    with pytest.raises(ValueError, match="read-only"):
+        estimator.periods_s[0] = 99.0
 
 
 def test_quiet_record_is_class_zero_and_finite() -> None:

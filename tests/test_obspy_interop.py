@@ -132,6 +132,35 @@ def test_inconsistent_traces_are_rejected(overrides: dict, message: str) -> None
         from_obspy_stream(stream, unit="gal")
 
 
+def test_a_fraction_of_a_sample_of_offset_is_also_rejected() -> None:
+    # 4.9 ms at 100 Hz: under the old half-sample tolerance this was silently
+    # accepted, even though it already distorts the vector resultant.
+    stream = build_stream(
+        HNE={"starttime": obspy.UTCDateTime(2026, 9, 4, 0, 0, 0, 4900)},
+    )
+    with pytest.raises(DataFormatError, match="start at the same time"):
+        from_obspy_stream(stream, unit="gal")
+
+
+def test_zero_sampling_rate_is_rejected_with_a_clear_message() -> None:
+    zero_rate = {"sampling_rate": 0.0}
+    stream = build_stream(HNN=zero_rate, HNE=zero_rate, HNZ=zero_rate)
+    with pytest.raises(DataFormatError, match="sampling rate"):
+        from_obspy_stream(stream, unit="gal")
+
+
+def test_empty_channel_order_is_rejected_with_a_clear_message() -> None:
+    stream = build_stream()
+    with pytest.raises(DataFormatError, match="channel_order must not be empty"):
+        from_obspy_stream(stream, unit="gal", channel_order=())
+
+
+def test_two_traces_sharing_a_channel_code_are_rejected() -> None:
+    stream = build_stream(("HNN", "HNN", "HNZ"))
+    with pytest.raises(DataFormatError, match="more than one trace with channel code"):
+        from_obspy_stream(stream, unit="gal", channel_order=("HNN", "HNZ"))
+
+
 def test_mismatched_lengths_are_rejected() -> None:
     stream = build_stream()
     stream[1].data = stream[1].data[:-10]

@@ -52,6 +52,8 @@ _CHANNEL_NAMES: Final = {
     "UD": (2, "UD"),
 }
 
+_STARTTIME_TOLERANCE_S: Final = 1e-6
+
 
 def require_obspy() -> Any:
     """Import ObsPy lazily and return the module."""
@@ -93,6 +95,26 @@ def _component_label(channel: str) -> str:
         return channel.strip().upper()
 
 
+def _channel_map(traces: Sequence[Any]) -> dict[str, Any]:
+    """Return a channel-code-to-trace map, rejecting a code shared by two traces.
+
+    A plain dict comprehension would keep only the last trace for a repeated
+    code, silently swapping in the wrong waveform for whichever channel that
+    code was requested under.
+    """
+    by_channel: dict[str, Any] = {}
+    for trace in traces:
+        code = str(trace.stats.channel).strip().upper()
+        if code in by_channel:
+            raise DataFormatError(
+                f"The stream has more than one trace with channel code {code!r}. "
+                "Select a single trace per channel first, for example "
+                "stream.select(id='...')."
+            )
+        by_channel[code] = trace
+    return by_channel
+
+
 def _selected_traces(stream: Any, channel_order: Sequence[str] | None) -> list[Any]:
     """Return the traces to convert, ordered horizontal-horizontal-vertical."""
     traces = list(stream)
@@ -100,9 +122,11 @@ def _selected_traces(stream: Any, channel_order: Sequence[str] | None) -> list[A
         raise DataFormatError("The stream contains no traces.")
     if channel_order is not None:
         wanted = [code.strip().upper() for code in channel_order]
+        if not wanted:
+            raise DataFormatError("channel_order must not be empty.")
         if len(set(wanted)) != len(wanted):
             raise DataFormatError("channel_order must not repeat a channel code.")
-        by_channel = {str(trace.stats.channel).strip().upper(): trace for trace in traces}
+        by_channel = _channel_map(traces)
         missing = [code for code in wanted if code not in by_channel]
         if missing:
             available = ", ".join(sorted(by_channel)) or "none"
@@ -130,7 +154,11 @@ def _selected_traces(stream: Any, channel_order: Sequence[str] | None) -> list[A
 def _validate_consistency(traces: Sequence[Any]) -> None:
     """Reject streams whose traces do not describe one aligned recording."""
     first = traces[0].stats
-    sample_interval = 1.0 / float(first.sampling_rate)
+    if not float(first.sampling_rate) > 0.0:
+        raise DataFormatError(
+            f"Trace {first.channel} has a non-positive sampling rate "
+            f"({first.sampling_rate!r} Hz)."
+        )
     for trace in traces:
         stats = trace.stats
         if np.ma.isMaskedArray(trace.data):
@@ -150,9 +178,13 @@ def _validate_consistency(traces: Sequence[Any]) -> None:
                 f"{first.npts} and {stats.npts}. Trim explicitly before converting, "
                 "for example stream.trim(starttime, endtime)."
             )
-        # Half a sample: anything larger would misalign the components against
-        # each other, which silently changes the vector resultant.
-        if abs(float(stats.starttime - first.starttime)) > 0.5 * sample_interval:
+        # A tolerance for UTCDateTime's own floating-point representation, not
+        # for real misalignment: components are combined sample-for-sample by
+        # index with no interpolation, so even a fraction of a sample of
+        # genuine offset would silently distort the vector resultant, most at
+        # high frequency. Traces meant to be combined this way -- from one
+        # digitizer -- share a timestamp to far better than this.
+        if abs(float(stats.starttime - first.starttime)) > _STARTTIME_TOLERANCE_S:
             raise DataFormatError(
                 "All traces must start at the same time; found "
                 f"{first.starttime} and {stats.starttime}. Trim explicitly before "
