@@ -5,6 +5,7 @@ from pyshindo import (
     RealtimeFilter,
     calculate_measured_intensity,
     calculate_realtime_intensity,
+    calculate_spectrum_intensity,
     peak_ground_velocity,
     remove_offset,
     scale_acceleration_to_intensity,
@@ -67,5 +68,12 @@ long_period = calculate_long_period_class(
 print(f"Long-period class:        {long_period.long_period_class}")
 print(f"Maximum Sva:              {long_period.max_sva_cm_s:.3f} cm/s")
 print(f"at period:                {long_period.critical_period_s:.1f} s")
+
+# %% Spectrum intensity (SI value)
+# Housner's index, not a JMA quantity: relative velocity response, not
+# combined across components. See examples/09.
+si = calculate_spectrum_intensity(acceleration_gal, sampling_rate_hz, unit="gal")
+for name, value in zip(("NS", "EW", "UD"), si.si_cm_s, strict=True):
+    print(f"SI {name}:                 {value:.3f} cm/s")
 
 # %%

@@ -1,12 +1,15 @@
 """Numerical kernel for the JMA long-period ground motion calculation.
 
-Three pieces, each traceable to a JMA primary source:
+Two pieces, each traceable to a JMA primary source:
 
 1. the 20-second second-order high-pass recurrence applied to acceleration;
-2. the single-degree-of-freedom oscillator bank solved by the linear
-   acceleration method;
-3. the ground velocity that turns a relative velocity response into an
-   absolute one.
+2. the ground velocity that turns a relative velocity response into an
+   absolute one, and the horizontal vector composite JMA adopted in 2016.
+
+The single-degree-of-freedom oscillator bank itself -- the linear
+acceleration method solved here for the relative velocity response -- is not
+specific to JMA's definition and lives in :mod:`pyshindo._spectral_response`,
+shared with :mod:`pyshindo.spectrum_intensity`.
 
 The published high-pass is stated as ``y_t = acc_t + a1*acc_(t-1) +
 a2*acc_(t-2) - b1*y_(t-1) - b2*y_(t-2)``, with ``acc_HPF_t = G0 * y_t``.
@@ -46,6 +49,12 @@ import numpy as np
 from scipy import signal as scipy_signal
 from scipy.integrate import cumulative_trapezoid
 
+from .._spectral_response import (
+    OscillatorBank,
+    seed_relative_velocity,
+    transfer_functions,
+)
+from .._spectral_response import design_oscillator_bank as design_oscillator_bank
 from ..units import FloatArray
 
 REFERENCE_SAMPLING_RATE_HZ: Final = 100.0
@@ -154,97 +163,6 @@ def apply_high_pass(
         zi=state,
     )
     return np.ascontiguousarray(filtered * design.gain), new_state
-
-
-@dataclass(frozen=True, slots=True)
-class OscillatorBank:
-    """Linear-acceleration recurrence coefficients for a set of periods.
-
-    Each array holds one value per period. ``a11`` through ``b22`` are the
-    published closed forms; they have been checked against an independent
-    matrix-exponential first-order-hold discretization of the same equation of
-    motion and agree to about 1e-14 across the official period grid, which
-    also confirms that "線形加速度法" here means a first-order hold on the
-    acceleration within each step.
-    """
-
-    periods_s: FloatArray
-    damping_ratio: float
-    sampling_rate_hz: float
-    a11: FloatArray
-    a12: FloatArray
-    a21: FloatArray
-    a22: FloatArray
-    b11: FloatArray
-    b12: FloatArray
-    b21: FloatArray
-    b22: FloatArray
-
-    @property
-    def period_count(self) -> int:
-        """Return the number of periods in the bank."""
-        return int(self.periods_s.size)
-
-
-def design_oscillator_bank(
-    periods_s: FloatArray,
-    damping_ratio: float,
-    sampling_rate_hz: float,
-) -> OscillatorBank:
-    """Build the recurrence coefficients for every period at once."""
-    periods = np.asarray(periods_s, dtype=np.float64)
-    if periods.ndim != 1 or periods.size == 0:
-        raise ValueError("periods_s must be a non-empty one-dimensional array.")
-    if not np.all(np.isfinite(periods)) or np.any(periods <= 0.0):
-        raise ValueError("periods_s must be finite and greater than zero.")
-    h = float(damping_ratio)
-    if not 0.0 < h < 1.0:
-        raise ValueError("damping_ratio must lie strictly between zero and one.")
-    dt = 1.0 / float(sampling_rate_hz)
-
-    w = 2.0 * np.pi / periods
-    wd = w * np.sqrt(1.0 - h * h)
-    e = np.exp(-h * w * dt)
-    cos = np.cos(wd * dt)
-    sin = np.sin(wd * dt)
-
-    a11 = e * (cos + (h * w / wd) * sin)
-    a12 = e * sin / wd
-    a21 = -e * (w**2 / wd) * sin
-    a22 = e * (cos - (h * w / wd) * sin)
-
-    b11 = (
-        e
-        * (
-            (1.0 / w**2 + 2.0 * h / (w**3 * dt)) * cos
-            + (h / (w * wd) - (1.0 - 2.0 * h * h) / (w**2 * wd * dt)) * sin
-        )
-        - 2.0 * h / (w**3 * dt)
-    )
-    b12 = (
-        e * (-(2.0 * h / (w**3 * dt)) * cos + ((1.0 - 2.0 * h * h) / (w**2 * wd * dt)) * sin)
-        - 1.0 / w**2
-        + 2.0 * h / (w**3 * dt)
-    )
-    b21 = (
-        e * (-(1.0 / (w**2 * dt)) * cos - (h / (w * wd * dt) + 1.0 / wd) * sin)
-        + 1.0 / (w**2 * dt)
-    )
-    b22 = e * ((1.0 / (w**2 * dt)) * cos + (h / (w * wd * dt)) * sin) - 1.0 / (w**2 * dt)
-
-    return OscillatorBank(
-        periods_s=periods,
-        damping_ratio=h,
-        sampling_rate_hz=float(sampling_rate_hz),
-        a11=a11,
-        a12=a12,
-        a21=a21,
-        a22=a22,
-        b11=b11,
-        b12=b12,
-        b21=b21,
-        b22=b22,
-    )
 
 
 class ResponseState:
@@ -406,56 +324,6 @@ class OscillatorSolver(StrEnum):
             raise ValueError(f"Unknown solver {value!r}. Expected one of: {options}.") from exc
 
 
-def _transfer_functions(bank: OscillatorBank) -> tuple[FloatArray, FloatArray]:
-    """Return one ``lfilter`` numerator and denominator per period.
-
-    The published step ``x[n+1] = A x[n] + B0 u[n] + B1 u[n+1]`` is a state
-    space realization of a linear time-invariant system, so it has an exact
-    transfer function from filtered acceleration to relative velocity::
-
-        V(z)     b22 z^2 + (b21 - a11 b22 + a21 b12) z + (a21 b11 - a11 b21)
-        ---- = ---------------------------------------------------------------
-        U(z)          z^2 - (a11 + a22) z + (a11 a22 - a12 a21)
-
-    Nothing is reinterpreted here: the coefficients are derived from the same
-    published closed forms, and running them reproduces the recurrence to about
-    1e-12, the difference being floating-point ordering alone.
-    """
-    numerator = np.column_stack(
-        [
-            bank.b22,
-            bank.b21 - bank.a11 * bank.b22 + bank.a21 * bank.b12,
-            bank.a21 * bank.b11 - bank.a11 * bank.b21,
-        ]
-    )
-    denominator = np.column_stack(
-        [
-            np.ones_like(bank.a11),
-            -(bank.a11 + bank.a22),
-            bank.a11 * bank.a22 - bank.a12 * bank.a21,
-        ]
-    )
-    return numerator, denominator
-
-
-def _seed_relative_velocity(bank: OscillatorBank, acceleration: FloatArray) -> FloatArray:
-    """Return the relative velocity of the first two samples, shaped ``(2, periods, components)``.
-
-    The published initialization is ``DIS(1) = 0`` and ``VEL(1) = -A(1)*dt``,
-    which is not a state a difference equation can be started from directly.
-    Producing these two samples from the recurrence itself and seeding the
-    filter with them carries the initialization across exactly.
-    """
-    dt = 1.0 / bank.sampling_rate_hz
-    first = -acceleration[0] * dt
-    second = (
-        bank.a22[:, np.newaxis] * first
-        + bank.b21[:, np.newaxis] * acceleration[0]
-        + bank.b22[:, np.newaxis] * acceleration[1]
-    )
-    return np.stack([np.broadcast_to(first, second.shape), second])
-
-
 def filtered_response_maxima(
     bank: OscillatorBank,
     filtered_acceleration: FloatArray,
@@ -481,8 +349,8 @@ def filtered_response_maxima(
 
     dt = 1.0 / bank.sampling_rate_hz
     ground_velocity = cumulative_trapezoid(filtered_acceleration, dx=dt, axis=0, initial=0)
-    seed = _seed_relative_velocity(bank, filtered_acceleration) if samples > 1 else None
-    numerator, denominator = _transfer_functions(bank)
+    seed = seed_relative_velocity(bank, filtered_acceleration) if samples > 1 else None
+    numerator, denominator = transfer_functions(bank)
 
     velocity = np.empty((samples, HORIZONTAL_COMPONENTS), dtype=np.float64)
     for index in range(period_count):

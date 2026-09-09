@@ -114,8 +114,6 @@ def classify_long_period(sva_cm_s: float) -> LongPeriodClass:
     return LongPeriodClass.ZERO
 
 
-
-
 def long_period_class_label(
     value: float,
     *,

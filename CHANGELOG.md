@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1 - 2026-09-10
+
+- Added: Housner's spectrum intensity (SI value), `pyshindo.calculate_spectrum_intensity` -- the relative-velocity response spectrum averaged over 0.1-2.5 s, per component, matching a public prefectural road-bridge design manual's formula. Shares its oscillator solver with `pyshindo.long_period`, now factored into `pyshindo._spectral_response`. See `docs/api.md`.
+- Added: `pyshindo.plotting.maps` -- `intensity_map_figure`, `long_period_class_map_figure`, `continuous_value_map_figure` plot many stations on a map from parallel latitude/longitude/value arrays (Plotly `Scattermap`, no API token). Discrete classes reuse this package's JMA color tables; continuous values (SI, PGV, PGA) get a colorscaled trace instead. See `docs/api.md`.
+- Added: `pyshindo.obspy_interop.apply_obspy_calibration` applies a stream's `trace.stats.calib` and resets it to `1.0`, for readers (K-NET/KiK-net among them) that leave `trace.data` in raw digitizer counts.
+- Fixed: `scale_acceleration_to_intensity`'s `allow_fewer_components` argument was ignored internally, making its one-dimensional-input path dead code.
+- Added: `classify_intensity_array` and `intensity_interval` are now exported from `pyshindo`; both existed already but were unused and untested.
+- Docs: corrected `RealtimeIntensityEstimator.process_sample`'s docstring, which described its filter-state update as in-place when every call actually replaces the array.
+- Tests/CI: closed coverage gaps (84% to 87% overall); CI now runs Python 3.12 and 3.13, enforces `--cov-fail-under=86`, and checks that a minimal `pip install pyshindo` still imports.
+
 ## 0.2.0 - 2026-09-05
 
 - JMA long-period ground motion class (`pyshindo.long_period`): the published 20-second second-order high-pass, a bank of 32 damped oscillators over the official 1.6-7.8 s grid solved by the linear acceleration method, ground velocity by trapezoidal integration, the per-sample horizontal vector composite adopted by JMA in 2016, and the overall plus per-period-band classes. Every published constant is used verbatim at 100 Hz and regression-tested as a literal; other sampling rates re-derive the high-pass from the analog prototype behind those constants and are flagged as non-reference. Verified against JMA's own published values across 268 stations of two earthquakes: every long-period class and period band matches, and the response spectra themselves agree to about 1e-5, worst case, over the stations checked (see [`docs/validation.md`](docs/validation.md)).

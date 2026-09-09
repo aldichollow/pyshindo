@@ -65,7 +65,6 @@ class LongPeriodResult:
         """Return sample count divided by sampling rate."""
         return self.sample_count / self.sampling_rate_hz
 
-
     def band(self, band_second: int) -> LongPeriodBandResult:
         """Return the result for one period band, keyed by its integer second."""
         for entry in self.bands:

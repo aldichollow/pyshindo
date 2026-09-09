@@ -21,6 +21,12 @@ horizontals at an unspecified azimuth, so they keep the labels ``"H1"``/
 Nothing is lost by that: the calculations combine the components with a
 Euclidean norm, which is invariant to rotation within the horizontal plane.
 
+Some readers (K-NET/KiK-net among them) leave a trace's data in raw counts
+and its physical-unit scale factor in ``trace.stats.calib`` instead of
+applying it; see :func:`apply_obspy_calibration` for a small, format-agnostic
+helper that does, since :func:`from_obspy_stream` itself assumes the data it
+receives is already physical.
+
 Requires the optional dependency group: ``pip install "pyshindo[obspy]"``.
 """
 
@@ -65,6 +71,33 @@ def require_obspy() -> Any:
             'pip install "pyshindo[obspy]".'
         ) from exc
     return obspy
+
+
+def apply_obspy_calibration(stream: Any) -> Any:
+    """Return a copy of ``stream`` with each trace's ``stats.calib`` applied.
+
+    Some ObsPy readers -- its K-NET/KiK-net reader among them -- leave
+    ``trace.data`` in raw digitizer counts and record the physical-unit
+    scale factor separately, in ``trace.stats.calib``, rather than applying
+    it. Passing such a stream straight to :func:`from_obspy_stream` would
+    silently treat counts as if they were already in the stated unit --
+    wrong by whatever the scale factor is, with nothing to raise an error.
+    This multiplies ``calib`` into a copy of the data for every trace and
+    resets ``calib`` to ``1.0`` so it is not applied twice by anything
+    downstream.
+
+    A trace whose ``trace.data`` is already physical (``calib == 1.0``, the
+    default for most readers) passes through unchanged. Check what a
+    specific format's ``calib`` actually measures before relying on this --
+    ObsPy's K-NET/KiK-net reader documents its own as m/s^2 per count, not
+    gal, so :func:`from_obspy_stream`'s ``unit`` must be set to match.
+    """
+    calibrated = stream.copy()
+    for trace in calibrated:
+        if trace.stats.calib != 1.0:
+            trace.data = trace.data * trace.stats.calib
+            trace.stats.calib = 1.0
+    return calibrated
 
 
 def _classify_channel(channel: str) -> tuple[int, str]:

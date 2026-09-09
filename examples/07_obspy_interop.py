@@ -8,7 +8,7 @@ from pyshindo import (
     remove_offset,
     synthetic_three_component_motion,
 )
-from pyshindo.obspy_interop import from_obspy_stream
+from pyshindo.obspy_interop import apply_obspy_calibration, from_obspy_stream
 
 # %% Build a stream that stands in for a file ObsPy would read
 # In real use this is `obspy.read("...")` for K-NET, KiK-net, miniSEED, SAC, and
@@ -78,6 +78,20 @@ try:
     from_obspy_stream(misaligned, unit="gal")
 except ValueError as error:
     print(f"Rejected as expected: {error}")
+
+# %% Formats that leave data in raw counts (K-NET/KiK-net among them)
+# ObsPy's K-NET/KiK-net reader returns trace.data as digitizer counts and keeps
+# the physical-unit scale factor separately, in trace.stats.calib, instead of
+# applying it. Passing such a stream straight to from_obspy_stream would treat
+# counts as if they were already the stated unit -- silently wrong by whatever
+# calib is. apply_obspy_calibration multiplies it in and resets calib to 1.0.
+raw_counts = stream.copy()
+for trace, calib in zip(raw_counts, (6.34e-06, 6.34e-06, 6.34e-06), strict=True):
+    trace.data = (trace.data / calib).astype(trace.data.dtype)
+    trace.stats.calib = calib  # K-NET/KiK-net's own calib is in m/s^2 per count
+
+calibrated_record = from_obspy_stream(apply_obspy_calibration(raw_counts), unit="m/s^2")
+print(f"calibrated shape: {calibrated_record.acceleration.shape}")
 
 # %% Horizontal-only records are still useful
 horizontal = from_obspy_stream(

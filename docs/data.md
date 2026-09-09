@@ -72,3 +72,16 @@ SEEDおよびその周辺の交換形式には、物理単位を確実に伝え�
 列はSEEDの方位コード(チャンネル名の末尾1文字)から水平・水平・上下の順に並べ替えられます。`N`/`E`/`Z` はそれぞれ `NS`/`EW`/`UD` になります。`1`/`2` はSEEDでは「方位が特定されていない直交する水平2成分」を意味するため、北・東であるかのように偽らず `H1`/`H2` とラベルします。これは数値的には無害です。計測震度もPGVも成分をユークリッドノルムで合成するため、水平2成分が面内でどう回転していても結果は変わりません(`tests/test_velocity.py` に回転不変性の回帰テストがあります)。
 
 方位コードから判別できない場合は `channel_order=("...", "...", "...")` で並び順を明示できます。
+
+### 生カウント値のまま読まれるフォーマット(K-NET/KiK-netなど)
+
+ObsPyのK-NET/KiK-netリーダーは `trace.data` を生の数値(counts)のまま返し、物理量への換算係数を `trace.stats.calib` に別途保持します(`from_obspy_stream` はデータが既に物理量であることを前提とするため、そのまま渡すと100万倍ずれた値をエラーなく計算してしまいます)。`apply_obspy_calibration(stream)` を先に通すと、各トレースの `calib` をデータに掛けて `1.0` に戻したコピーが得られます:
+
+```python
+from pyshindo.obspy_interop import apply_obspy_calibration, from_obspy_stream
+
+stream = obspy.read("...", format="KNET")
+record = from_obspy_stream(apply_obspy_calibration(stream), unit="m/s^2")
+```
+
+`calib` が測る単位はフォーマットごとに異なります(K-NET/KiK-netの場合はm/s²であり、galではありません)。`from_obspy_stream` の `unit` はそれに合わせて指定してください。

@@ -94,6 +94,8 @@ intensity_from_acceleration(threshold_gal) -> float          # a0 -> 連続値
 acceleration_from_intensity(intensity) -> float              # 逆変換
 report_intensity(value) -> float                              # 気象庁の十進丸め処理
 classify_intensity(value) -> IntensityScale                   # 0〜7 / 5弱〜6強
+classify_intensity_array(values) -> ndarray[str]               # classify_intensityの配列版
+intensity_interval(scale) -> tuple[float, float]                # 階級の下限(含む)・上限(含まない)
 intensity_label(value, *, language="ja") -> str                # "震度5弱" 等
 INTENSITY_INTERVALS: dict[IntensityScale, tuple[float, float]]
 ```
@@ -150,6 +152,29 @@ pgv = peak_ground_velocity(filtered, sampling_rate_hz=100.0, unit="gal")
 この関係は一次資料が明記したものではなく、実証的に確認した経験則です。詳細と検証結果は [`docs/validation.md`](validation.md) を参照してください。
 
 使用例は [`examples/06_peak_velocity.py`](../examples/06_peak_velocity.py) にあります。
+
+## スペクトル強度(SI値)
+
+```python
+calculate_spectrum_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal",
+                              damping_ratio=0.20, periods_s=None,
+                              component_axis=-1, retain_spectrum=False)
+    -> SpectrumIntensityResult
+
+result.si_cm_s        # 成分ごとのSI値 [cm/s]、shape (成分数,)
+result.sv_cm_s         # 周期ごとの相対速度応答スペクトル、shape (周期数, 成分数)
+result.periods_s       # 既定は0.1〜2.5秒を121分割した等間隔グリッド
+```
+
+Housnerのスペクトル強度(SI値): `SI = (1/2.4) * ∫[0.1, 2.5] Sv(T, h=0.20) dT`。`Sv`は**相対**速度応答スペクトルで、長周期地震動階級が使う**絶対**速度応答スペクトルとは別物です。水平2成分は合成しません(`peak_ground_velocity`と同じく、どの成分を渡すかは呼び出し側の選択です。実務上の慣行はNS/EW水平2成分を個別に扱うことなので、水平だけが欲しい場合は`acceleration[:, :2]`)。
+
+1自由度系の応答計算自体は`pyshindo.long_period`が使っているのと同じ線形加速度法のソルバー(`pyshindo._spectral_response`)を共有しています。地動速度の加算や成分合成といったJMA長周期地震動階級固有の処理を行わない点だけが違います。
+
+SI値には気象庁の震度階級のような公式の離散階級は存在しないため、連続値(cm/s)をそのまま返します。積分区間(0.1〜2.5秒)のグリッド分割数・積分則は一次資料に明記がなく、収束性を独立に検証して既定値(線形121分割、台形則)を選んでいます。121分割は769分割との相対誤差が2e-05程度で、SI値が実務で報告される精度(cm/s単位で整数〜小数第1位)より十分細かい水準です。
+
+この式・減衰比0.20・水平成分ごとの報告は、鳥取県道路橋梁設計マニュアル3-6「スペクトル強度SI値」(式3-11、大崎順彦による)に式番号付きで明記されています。実データでの確認: 同マニュアルの図3-18は2000年鳥取県西部地震のSI値を観測点ごとに示しており、対応するK-NET/KiK-net記録(米子TTR008、日野TTRH02地表センサー)を実際にダウンロードして`calculate_spectrum_intensity`にかけると、図の値と1%以内で一致します(米子NS 47.59 対 47.12、EW 66.05 対 65.44、日野NS 113.7 対 113 cm/s)。
+
+使用例は [`examples/09_spectrum_intensity.py`](../examples/09_spectrum_intensity.py) にあります。
 
 ## 単位変換
 
@@ -209,7 +234,7 @@ result.bands                 # 周期帯別(1秒台〜7秒台)の最大Svaと階
 ## `pyshindo.obspy_interop`(ObsPy連携、要 `pip install pyshindo[obspy]`)
 
 ```python
-from pyshindo.obspy_interop import from_obspy_stream
+from pyshindo.obspy_interop import apply_obspy_calibration, from_obspy_stream
 
 record = from_obspy_stream(stream, *, unit, channel_order=None, allow_fewer_components=True)
 record.acceleration            # (サンプル数, 成分数) のfloat64配列
@@ -217,6 +242,8 @@ record.metadata                # ObsPyRecordMetadata
 ```
 
 ObsPyの `Stream` を本パッケージが扱う配列へ変換するだけの薄いアダプタです。詳細は [`docs/data.md`](data.md) を参照してください。
+
+`apply_obspy_calibration(stream)` は、K-NET/KiK-netなど一部のObsPyリーダーが`trace.data`を生カウント値のまま残し、物理量換算係数を`trace.stats.calib`に別途持たせている場合に、それを掛けて`calib`を1.0に戻したコピーを返します。`from_obspy_stream`はデータが既に物理量であることを前提とするため、その手前で通してください。
 
 ## `pyshindo.plotting`(可視化、要 `pip install pyshindo[plot]`)
 
@@ -230,3 +257,20 @@ from pyshindo.plotting import (
 ```
 
 いずれもPlotlyの `Figure` を返すだけで、数値結果には関与しません。使用例は[`examples/`](../examples/) を参照してください。
+
+### 複数観測点の分布図
+
+```python
+from pyshindo.plotting import (
+    intensity_map_figure, long_period_class_map_figure, continuous_value_map_figure,
+)
+
+intensity_map_figure(latitudes_deg, longitudes_deg, intensities, *, labels=None, title=...,
+                      map_style="carto-positron")
+long_period_class_map_figure(latitudes_deg, longitudes_deg, classes, *, labels=None, title=...,
+                              map_style="carto-positron")
+continuous_value_map_figure(latitudes_deg, longitudes_deg, values, *, value_label, labels=None,
+                             colorscale="YlOrRd", title=..., map_style="carto-positron")
+```
+
+これも薄いアダプタです。緯度・経度・値の並列配列を渡すだけで、`pyshindo.io`・`pyshindo.obspy_interop`・その他どのデータ源から来た値かは関知しません。震度・長周期地震動階級は既存の図と同じJMA配色で階級ごとに1トレースに分け、SI値・PGVのような公式階級のない連続値は連続カラースケール+カラーバーの1トレースになります。Plotlyの`Scattermap`(トークン不要の組み込みMapLibreスタイル)を使用します。既定の背景地図`"carto-positron"`はマーカーの色が沈まないよう抑えたグレースケールで、`map_style`引数で`"open-street-map"`(元のカラフルなOSMタイル)や`"carto-positron-nolabels"`などPlotlyの組み込みスタイルに切り替えられます。`Scattermap`のマーカーには`Scatter`と違って枠線(`marker.line`)がないため、各マーカーの背後に白い縁取り用の非表示トレースを重ねています。使用例は[`examples/10_station_map.py`](../examples/10_station_map.py)を参照してください。

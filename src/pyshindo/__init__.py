@@ -45,7 +45,9 @@ from .scale import (
     IntensityScale,
     acceleration_from_intensity,
     classify_intensity,
+    classify_intensity_array,
     intensity_from_acceleration,
+    intensity_interval,
     intensity_label,
     report_intensity,
 )
@@ -58,6 +60,12 @@ from .signal import (
     resample_acceleration,
     time_axis,
     vector_resultant,
+)
+from .spectrum_intensity import (
+    SpectrumIntensityResult,
+    SpectrumIntensityTiming,
+    calculate_spectrum_intensity,
+    default_periods_s,
 )
 from .synthetic import scale_acceleration_to_intensity, synthetic_three_component_motion
 from .units import STANDARD_GRAVITY_MPS2, AccelerationUnit, convert_acceleration, to_gal
@@ -87,17 +95,22 @@ __all__ = [
     "RealtimeSample",
     "RecursiveFilterDesign",
     "SamplingDiagnostics",
+    "SpectrumIntensityResult",
+    "SpectrumIntensityTiming",
     "acceleration_from_intensity",
     "amplitude_duration_curve",
     "apply_jma_filter_fft",
     "calculate_measured_intensity",
     "calculate_realtime_intensity",
+    "calculate_spectrum_intensity",
     "classify_intensity",
+    "classify_intensity_array",
     "compare_intensity_methods",
     "component_peak_acceleration",
     "component_peak_velocity",
     "convert_acceleration",
     "cosine_taper",
+    "default_periods_s",
     "design_realtime_filter",
     "detrend_acceleration",
     "duration_sample_count",
@@ -107,6 +120,7 @@ __all__ = [
     "filter_stage_response",
     "integrate_to_velocity",
     "intensity_from_acceleration",
+    "intensity_interval",
     "intensity_label",
     "jma_filter_components",
     "jma_filter_response",

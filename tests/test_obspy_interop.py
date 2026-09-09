@@ -5,7 +5,7 @@ import pytest
 
 from pyshindo import calculate_measured_intensity, peak_ground_velocity
 from pyshindo.exceptions import DataFormatError, MissingComponentWarning
-from pyshindo.obspy_interop import from_obspy_stream
+from pyshindo.obspy_interop import apply_obspy_calibration, from_obspy_stream
 
 obspy = pytest.importorskip("obspy")
 
@@ -202,3 +202,44 @@ def test_empty_stream_is_rejected() -> None:
 def test_channel_order_reports_missing_channels() -> None:
     with pytest.raises(DataFormatError, match="channel_order requested"):
         from_obspy_stream(build_stream(), unit="gal", channel_order=("HNN", "NOPE"))
+
+
+def test_apply_obspy_calibration_multiplies_calib_into_the_data() -> None:
+    # Mimics ObsPy's K-NET/KiK-net reader: raw counts in trace.data, the
+    # physical-unit scale factor kept separately in trace.stats.calib.
+    stream = build_stream()
+    counts = [trace.data.copy() for trace in stream]
+    calib_values = (6.34e-06, 1.2e-05, 9.8e-06)
+    for trace, calib in zip(stream, calib_values, strict=True):
+        trace.stats.calib = calib
+
+    calibrated = apply_obspy_calibration(stream)
+
+    for trace, original, calib in zip(calibrated, counts, calib_values, strict=True):
+        np.testing.assert_allclose(trace.data, original * calib)
+        assert trace.stats.calib == 1.0
+    # The input stream itself is untouched -- callers might reuse it.
+    for trace, original in zip(stream, counts, strict=True):
+        np.testing.assert_allclose(trace.data, original)
+
+
+def test_apply_obspy_calibration_leaves_default_calib_traces_unchanged() -> None:
+    stream = build_stream()  # calib defaults to 1.0
+    original = [trace.data.copy() for trace in stream]
+
+    calibrated = apply_obspy_calibration(stream)
+
+    for trace, expected in zip(calibrated, original, strict=True):
+        np.testing.assert_allclose(trace.data, expected)
+
+
+def test_apply_obspy_calibration_feeds_from_obspy_stream() -> None:
+    stream = build_stream()
+    for trace in stream:
+        trace.stats.calib = 0.01  # e.g. counts -> m/s^2
+    expected_by_channel = {str(trace.stats.channel): trace.data * 0.01 for trace in stream}
+
+    record = from_obspy_stream(apply_obspy_calibration(stream), unit="m/s^2")
+
+    for column, channel in enumerate(record.metadata.channel_codes):
+        np.testing.assert_allclose(record.acceleration[:, column], expected_by_channel[channel])

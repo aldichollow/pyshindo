@@ -12,6 +12,11 @@ from .figures import (
     measured_result_figure,
     realtime_result_figure,
 )
+from .maps import (
+    continuous_value_map_figure,
+    intensity_map_figure,
+    long_period_class_map_figure,
+)
 from .theme import (
     JMA_INTENSITY_COLORS,
     LINE_COLORS,
@@ -31,10 +36,13 @@ __all__ = [
     "add_intensity_bands",
     "amplitude_duration_figure",
     "apply_theme",
+    "continuous_value_map_figure",
     "filter_response_figure",
     "filter_stages_figure",
     "intensity_comparison_figure",
+    "intensity_map_figure",
     "jma_filter_components_figure",
+    "long_period_class_map_figure",
     "long_period_spectrum_figure",
     "measured_result_figure",
     "realtime_result_figure",

@@ -310,8 +310,9 @@ class RealtimeIntensityEstimator:
 
         Runs the filter cascade in plain Python floats rather than NumPy
         arrays -- NumPy's per-call dispatch overhead dominates at this size.
-        ``self._zi`` is written back in place every call, so interleaving
-        this with :meth:`process` stays correct.
+        Every call replaces ``self._zi`` with a freshly built array from
+        plain Python state, not an in-place mutation of the previous buffer,
+        so interleaving this with :meth:`process` stays correct.
         """
         total_started = time.perf_counter()
         values = np.asarray(acceleration, dtype=np.float64)

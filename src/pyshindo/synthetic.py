@@ -79,13 +79,18 @@ def scale_acceleration_to_intensity(
     *,
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
     component_axis: int = -1,
+    allow_fewer_components: bool = False,
 ) -> tuple[FloatArray, float]:
     """Scale a complete record to a target raw FFT-reference intensity.
 
     Instrumental intensity changes by ``2 * log10(scale)`` under positive linear
     amplitude scaling. The function therefore needs only one reference
     calculation. It returns the scaled data in the input unit and layout, plus
-    the applied dimensionless factor.
+    the applied dimensionless factor. ``allow_fewer_components`` matches
+    :func:`~pyshindo.measured.measured_intensity`'s option of the same name;
+    it must be set for a one- or two-component record, including a
+    one-dimensional ``acceleration``, to be accepted rather than rejected as
+    short of the standard three components.
     """
     target = float(target_intensity_raw)
     if not math.isfinite(target):
@@ -94,7 +99,7 @@ def scale_acceleration_to_intensity(
     values = as_acceleration_array(
         acceleration,
         component_axis=component_axis,
-        allow_fewer_components=False,
+        allow_fewer_components=allow_fewer_components,
         warn_fewer_components=False,
     )
     current = measured_intensity(
@@ -103,6 +108,7 @@ def scale_acceleration_to_intensity(
         unit=unit,
         reported=False,
         component_axis=-1,
+        allow_fewer_components=allow_fewer_components,
     )
     if not math.isfinite(current):
         raise ValueError("The input record has no positive intensity threshold to scale.")

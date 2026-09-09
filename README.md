@@ -1,10 +1,12 @@
 # pyshindo
 
+[![CI](https://github.com/aldichollow/pyshindo/actions/workflows/ci.yml/badge.svg)](https://github.com/aldichollow/pyshindo/actions/workflows/ci.yml)
+
 ## 概要
 
 `pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
 
-計測震度に加えて、長周期地震動階級(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)とPGV(最大速度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+計測震度に加えて、長周期地震動階級(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)、PGV(最大速度)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
 
 詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
 
@@ -29,6 +31,7 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
 - Velocity by cumulative trapezoidal integration, and PGV -- with the baseline treatment left to the caller rather than applied silently.
 - The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Every class matches JMA's own published values across 268 stations of two earthquakes; the response spectra themselves agree to about 1e-5, worst case, over the stations checked.
+- Housner's spectrum intensity (SI value), per component: the relative-velocity response spectrum averaged over the 0.1-2.5 s period band, sharing the same linear-acceleration-method oscillator solver as the long-period class but without its absolute-velocity or component-combination steps.
 - Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
@@ -170,6 +173,28 @@ primary sources, [`docs/validation.md`](docs/validation.md) for the full
 comparison, and [`examples/08_long_period.py`](examples/08_long_period.py) to
 reproduce it.
 
+## Spectrum intensity (SI value)
+
+```python
+from pyshindo import calculate_spectrum_intensity
+
+result = calculate_spectrum_intensity(acceleration, 100.0, unit="gal")
+print(result.si_cm_s)   # one value per component, not combined
+```
+
+Housner's SI: `SI = (1/2.4) * integral[0.1, 2.5] Sv(T, h=0.20) dT`, where `Sv`
+is the *relative* velocity response spectrum -- not the absolute response the
+long-period class uses, and not combined across horizontal components,
+matching the same choice `peak_ground_velocity` leaves to the caller. The
+oscillator response itself shares the long-period class's linear-acceleration
+solver, without its ground-velocity or vector-combination steps.
+
+Neither the damping ratio (0.20, specific to SI, not a general structural
+value) nor the 0.1-2.5 s integration range has changed across the sources
+checked, but no published discretization exists for evaluating that integral
+numerically; the 121-point grid used here was chosen by checking convergence
+directly. See [`examples/09_spectrum_intensity.py`](examples/09_spectrum_intensity.py).
+
 ## Reading other formats through ObsPy
 
 ```python
@@ -203,7 +228,7 @@ The selected design is recorded in `result.filter_name`. An explicit 2012 reques
 
 `pyshindo.io` parses the seven-line JMA strong-motion text header and can download one explicitly selected URL. No observed waveform is bundled. See [`docs/data.md`](docs/data.md).
 
-Plotly figures use a restrained package theme. Intensity colors 1 through 7 follow the JMA web color guide; the guide does not assign intensity 0 a color, so the neutral intensity-0 background is identified as a package choice. The long-period class colors are the ones JMA uses on its own long-period observation pages.
+Plotly figures use a restrained package theme. Intensity colors 1 through 7 follow the JMA web color guide; the guide does not assign intensity 0 a color, so the neutral intensity-0 background is identified as a package choice. The long-period class colors are the ones JMA uses on its own long-period observation pages. Multi-station distribution maps (`intensity_map_figure`, `long_period_class_map_figure`, `continuous_value_map_figure`) share the same colors, taking parallel latitude/longitude/value arrays from whichever source produced them.
 
 ![pyshindo](docs/images/hero.png)
 
@@ -236,6 +261,8 @@ interactive window.
 | [`06_peak_velocity.py`](examples/06_peak_velocity.py)               | PGV, and why baseline treatment has to be your choice                                              |
 | [`07_obspy_interop.py`](examples/07_obspy_interop.py)               | Converting an ObsPy stream into this package's arrays                                              |
 | [`08_long_period.py`](examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
+| [`09_spectrum_intensity.py`](examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
+| [`10_station_map.py`](examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
 
 ## Development
 
