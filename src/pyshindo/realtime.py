@@ -269,6 +269,7 @@ class RealtimeIntensityEstimator:
                 thresholds[index] = threshold
         order_statistic_elapsed = time.perf_counter() - order_statistic_started
 
+        reporting_started = time.perf_counter()
         intensity_raw = intensity_series_from_acceleration(thresholds)
         intensity = report_intensity_array(intensity_raw)
         valid = ~np.isnan(intensity_raw)
@@ -281,6 +282,7 @@ class RealtimeIntensityEstimator:
             record_max[valid] = cumulative[valid]
             self._record_max = float(cumulative[valid][-1])
             self._has_intensity = True
+        reporting_elapsed = time.perf_counter() - reporting_started
 
         start = self._sample_count
         stop = start + values.shape[0]
@@ -290,6 +292,7 @@ class RealtimeIntensityEstimator:
         timing = RealtimeChunkTiming(
             filter_s=filter_elapsed,
             order_statistic_s=order_statistic_elapsed,
+            reporting_s=reporting_elapsed,
             total_s=time.perf_counter() - total_started,
         )
 

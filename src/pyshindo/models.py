@@ -145,12 +145,18 @@ class RealtimeChunkTiming:
     """Wall-clock timing for one :meth:`RealtimeIntensityEstimator.process` call.
 
     ``filter_s``: the compiled ``sosfilt`` pass. ``order_statistic_s``: the
-    per-sample rolling-threshold loop (usually the larger share for long
-    chunks). ``total_s``: the complete call.
+    per-sample rolling-threshold loop. ``reporting_s``: converting the
+    threshold series to intensity and applying the decimal display rounding
+    (:func:`~pyshindo.scale.report_intensity_array`) -- the Decimal-based
+    two-step rounding this involves runs per sample in Python and, for a
+    large chunk, can cost as much as ``order_statistic_s`` itself, so it is
+    broken out here rather than left invisible inside the gap between the
+    other three fields and ``total_s``. ``total_s``: the complete call.
     """
 
     filter_s: float
     order_statistic_s: float
+    reporting_s: float
     total_s: float
 
 

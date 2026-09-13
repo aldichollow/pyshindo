@@ -1,38 +1,42 @@
 # Changelog
 
+## 0.2.2 - 2026-09-13
+
+- Added: peak ground displacement -- `integrate_to_displacement`, `component_peak_displacement`, `peak_ground_displacement`, alongside the existing velocity trio.
+- Added: `calculate_response_spectrum` also returns pseudo-velocity (PSV); its displacement and velocity time series are now independent `retain_*` flags.
+- Added: `RealtimeChunkTiming.reporting_s` exposes the display-rounding cost.
+- Added: `marker_size` on the map figures.
+- Added: `ClippingReport.__str__` summarizes instead of dumping every interval.
+- Fixed: removed two unreachable branches in `RollingKthLargest._rebalance`.
+
 ## 0.2.1 - 2026-09-10
 
-- Added: Housner's spectrum intensity (SI value), `pyshindo.calculate_spectrum_intensity` -- the relative-velocity response spectrum averaged over 0.1-2.5 s, per component, matching a public prefectural road-bridge design manual's formula. Shares its oscillator solver with `pyshindo.long_period`, now factored into `pyshindo._spectral_response`. See `docs/api.md`.
-- Added: `pyshindo.calculate_response_spectrum` -- the general elastic response spectrum (Sd, Sv, pseudo-acceleration), sharing the same oscillator solver as `pyshindo.long_period` and `pyshindo.spectrum_intensity` but requiring an explicit damping ratio and period grid rather than defaulting to either one's convention. Relative response only; see `docs/api.md` for reconstructing an absolute response spectrum from it.
-- Added: `pyshindo.SpectrumIntensityEstimator` -- a streaming SI value estimator, following the same cumulative-maximum pattern as `pyshindo.long_period.LongPeriodEstimator`. Agrees with the batch calculation to floating-point rounding.
-- Added: `pyshindo.detect_clipping` -- flags suspected clipped samples (a known digitizer range, and/or a run of repeated identical values near a component's own peak), per component and interval. Diagnostic only: nothing is corrected, and no existing function calls it automatically. Checked against 268 real JMA station records with zero clipping and only 2 borderline false positives, both traced to rounding near a very quiet record's own smooth peak; see the docstring.
-- Added: `pyshindo.plotting.maps` -- `intensity_map_figure`, `long_period_class_map_figure`, `continuous_value_map_figure` plot many stations on a map from parallel latitude/longitude/value arrays (Plotly `Scattermap`, no API token). Discrete classes reuse this package's JMA color tables; continuous values (SI, PGV, PGA) get a colorscaled trace instead. See `docs/api.md`.
-- Added: `pyshindo.obspy_interop.apply_obspy_calibration` applies a stream's `trace.stats.calib` and resets it to `1.0`, for readers (K-NET/KiK-net among them) that leave `trace.data` in raw digitizer counts.
-- Fixed: `scale_acceleration_to_intensity`'s `allow_fewer_components` argument was ignored internally, making its one-dimensional-input path dead code.
-- Fixed: `pyshindo.plotting.maps._validate_coordinates` checked latitude against `[-90, 90]` but never checked longitude against `[-180, 180]`.
-- Added: `classify_intensity_array` and `intensity_interval` are now exported from `pyshindo`; both existed already but were unused and untested.
-- Docs: corrected `RealtimeIntensityEstimator.process_sample`'s docstring, which described its filter-state update as in-place when every call actually replaces the array.
-- Tests/CI: closed coverage gaps (84% to 87% overall); CI now runs Python 3.12 and 3.13, enforces `--cov-fail-under=86`, and checks that a minimal `pip install pyshindo` still imports.
+- Added: Housner's spectrum intensity (SI value) -- `calculate_spectrum_intensity`, plus a streaming estimator.
+- Added: a general elastic response spectrum -- `calculate_response_spectrum` (Sd, Sv, PSA).
+- Added: `detect_clipping`, a diagnostic-only check for saturated samples.
+- Added: multi-station distribution maps -- `pyshindo.plotting.maps`.
+- Added: `apply_obspy_calibration`, for readers (K-NET/KiK-net among them) that leave data in raw counts.
+- Added: `classify_intensity_array` and `intensity_interval` are now exported.
+- Fixed: `scale_acceleration_to_intensity`'s `allow_fewer_components` was ignored internally.
+- Fixed: map figures didn't validate longitude range, and their legend toggle left a marker's halo behind.
+- Docs: corrected `RealtimeIntensityEstimator.process_sample`'s docstring.
+- Tests/CI: closed coverage gaps; CI now runs Python 3.12 and 3.13.
 
 ## 0.2.0 - 2026-09-05
 
-- JMA long-period ground motion class (`pyshindo.long_period`): the published 20-second second-order high-pass, a bank of 32 damped oscillators over the official 1.6-7.8 s grid solved by the linear acceleration method, ground velocity by trapezoidal integration, the per-sample horizontal vector composite adopted by JMA in 2016, and the overall plus per-period-band classes. Every published constant is used verbatim at 100 Hz and regression-tested as a literal; other sampling rates re-derive the high-pass from the analog prototype behind those constants and are flagged as non-reference. Verified against JMA's own published values across 268 stations of two earthquakes: every long-period class and period band matches, and the response spectra themselves agree to about 1e-5, worst case, over the stations checked (see [`docs/validation.md`](docs/validation.md)).
-- `calculate_long_period_class` takes a `solver` argument. The default `"filter"` drives the oscillator bank as one second-order IIR filter per period, about 13 times faster than stepping the published recurrence in Python; `"recurrence"` keeps that recurrence and is what `LongPeriodEstimator` uses for streaming. Both solve the same equation -- the transfer function is derived from the same published closed forms -- and agree to about 1e-12, close enough that the class normally cannot differ, but a Sva sitting within machine precision of a class threshold can still classify differently between them, since the thresholds are lower-bound-inclusive. Use `solver="recurrence"` when a batch result must match a streaming one bit for bit.
-- `pyshindo.plotting.long_period_spectrum_figure` draws the response spectrum against the class thresholds.
-- Velocity by cumulative trapezoidal integration (`integrate_to_velocity`) and peak ground velocity (`component_peak_velocity`, `peak_ground_velocity`), always returned in cm/s, with no baseline correction applied implicitly. Separately, `pyshindo.long_period.apply_ground_motion_high_pass` exposes the same 20-second high-pass used for the long-period class, generalized to any component count; applying it before integrating reproduces the peak velocity JMA publishes in a long-period observation page's `max.csv` to a median relative error of about 0.01 percent across those 268 stations, against roughly 2 percent from the raw acceleration. This is an empirical finding, not a documented JMA procedure, and the default behavior of `peak_ground_velocity`/`component_peak_velocity` is unchanged.
-- Optional ObsPy interoperability (`pyshindo[obspy]`, `pyshindo.obspy_interop.from_obspy_stream`): converts a stream already in acceleration units into this package's arrays and metadata, making K-NET, KiK-net, miniSEED, SAC, and everything else `obspy.read` handles usable without reimplementing a reader. The adapter never resamples, trims, merges, rotates, or rescales, and rejects traces that disagree instead of reconciling them: mismatched start times beyond timestamp precision, mismatched sampling rates, two traces sharing a channel code, an empty `channel_order`, and a non-positive sampling rate are all rejected with a clear `DataFormatError`. The acceleration unit is a required argument rather than a guess, because SEED carries no dependable unit field.
-- `scripts/validate_official.py` compares the package against JMA's own published values for a whole earthquake at once: intensity class, peak acceleration, peak velocity, the long-period class and its seven period bands, and the absolute velocity response spectrum, for every station of one event. Results and their reading are in [`docs/validation.md`](docs/validation.md).
-- Fixed: the official 1.6-7.8 s period grid (`OFFICIAL_PERIODS_S`) and a custom grid passed to `calculate_long_period_class` or `LongPeriodEstimator` were writable arrays that were also the arrays used internally. Mutating a returned `result.periods_s` or `estimator.periods_s` could silently corrupt every later default-grid calculation in the process. All period arrays returned to callers are now read-only.
-- Fixed: `RealtimeIntensityEstimator.process()` re-read `filter_design.sos` on every call, while `process_sample()` used a private snapshot taken at construction. A caller that mutated a `RecursiveFilterDesign` object after handing it to an estimator would get silently different results from the two APIs on the same input. The estimator now takes its own defensive copy once, at construction, and both code paths use it.
-- Fixed: `pyshindo.plotting.acceleration_figure` silently dropped every channel past the third when no `component_names` were given, because the default label list was NS/EW/UD, sliced. Records with more than three channels now get generic `Channel N` labels instead of losing traces; an empty record now raises a clear error instead of a raw exception from an internal argmax.
-- `download_jma_record` now reports the installed version in its default user agent instead of a hard-coded 0.1.
-- Packaging: migrated `project.license` to the PEP 639 SPDX form (`license = "MIT"` plus `license-files`), removing a `setuptools` deprecation warning at build time. Added `project.urls` (Repository, Documentation, Issues, Changelog). Added a `MANIFEST.in` so the sdist carries `PATENTS.md`, `CHANGELOG.md`, `docs/`, `examples/`, and `scripts/`; `PATENTS.md` is now also bundled into the wheel via `license-files`, since the README directs readers to it before distribution or operational use.
+- Added: the JMA long-period ground motion class (`pyshindo.long_period`), plus a streaming estimator.
+- Added: velocity by integration and peak ground velocity (`integrate_to_velocity`, `peak_ground_velocity`).
+- Added: `apply_ground_motion_high_pass` reproduces JMA's own published peak velocity.
+- Added: optional ObsPy interoperability (`pyshindo.obspy_interop.from_obspy_stream`).
+- Added: `scripts/validate_official.py` compares results against JMA's published values for a whole event.
+- Fixed: mutable shared state in period grids and in `RealtimeIntensityEstimator`'s filter design.
+- Fixed: `acceleration_figure` silently dropped channels past the third.
+- Packaging: PEP 639 license metadata, `MANIFEST.in`, `project.urls`.
 
 ## 0.1.0 - 2026-09-02
 
-- Frequency-domain reference calculation of instrumental seismic intensity (JMA FFT method), with per-call timing on the result.
-- Original (2008) and improved (2012) causal approximation filters, plus the generalized low-sampling-rate filter from JP7681907B2.
-- Stateful chunk and single-sample real-time estimation with an exact rolling order statistic; results are invariant to chunk boundaries.
-- JMA strong-motion text parsing and opt-in single-file downloading; validated end to end against the official 2000 Tottori-ken Seibu (Yonago) record, reproducing the published measured intensity of 5.1.
-- Optional Plotly figures (`pyshindo[plot]`), including a named per-stage breakdown of each causal filter's analog factors (`RecursiveFilterDesign.stages`, `filter_stage_response`, `filter_stages_figure`) for inspecting each component's own frequency response, not just the combined result. A shared theme keeps color, line weight, and layout consistent across every figure, including a stacked one-row-per-channel view of acceleration (`acceleration_figure`, also used for the filtered channels in `measured_result_figure`).
-- Passes `mypy` cleanly; `pyshindo[dev]` includes it alongside `pytest` and `ruff`.
+- Frequency-domain reference calculation of instrumental seismic intensity.
+- Causal real-time approximation filters (2008, 2012, and the generalized low-rate design).
+- Stateful real-time estimation with an exact rolling order statistic.
+- JMA strong-motion text parsing and single-file downloading.
+- Optional Plotly figures.

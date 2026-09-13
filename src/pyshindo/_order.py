@@ -162,28 +162,28 @@ class RollingKthLargest:
             self._rest_count -= 1
 
     def _rebalance(self) -> None:
+        """Refill ``top`` back up to ``k`` entries after an eviction.
+
+        Only a shrink is ever needed here, not a general resync: the
+        insert logic in :meth:`update` already keeps every value in
+        ``top`` at least as large as every value in ``rest`` (a new value
+        only ever joins ``top`` by displacing ``top``'s current minimum,
+        which then becomes ``rest``'s new maximum), and eviction removes an
+        arbitrary entry without disturbing that ordering among what is
+        left. ``k`` and ``window_size`` are fixed for the object's
+        lifetime, so ``top_count`` can only ever fall short of ``target``,
+        never exceed it. An earlier version of this method also handled
+        the shrink and cross-heap-swap directions defensively; both were
+        proven -- and confirmed by an exhaustive randomized cross-check --
+        to never execute, so they were removed rather than left as
+        untested dead code.
+        """
         target_top_count = min(self.k, len(self))
         self._clean_top()
         self._clean_rest()
-
-        while self._top_count > target_top_count:
-            value, sample_id = self._pop_top()
-            self._push_rest(value, sample_id)
         while self._top_count < target_top_count:
             value, sample_id = self._pop_rest()
             self._push_top(value, sample_id)
-
-        # Both heaps are already clean at the front: only eviction (already
-        # handled above) can make an entry stale, and pushing never does.
-        top = self._top
-        rest = self._rest
-        while top and rest and top[0][0] < -rest[0][0]:
-            top_value, top_id = self._pop_top()
-            rest_value, rest_id = self._pop_rest()
-            self._push_top(rest_value, rest_id)
-            self._push_rest(top_value, top_id)
-            self._clean_top()
-            self._clean_rest()
 
     def _maybe_compact(self) -> None:
         limit = 2 * self.window_size + 64

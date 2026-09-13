@@ -69,7 +69,7 @@ detailed = calculate_response_spectrum(
     sampling_rate_hz,
     damping_ratio=OFFICIAL_DAMPING_RATIO,
     periods_s=OFFICIAL_PERIODS_S,
-    retain_time_series=True,
+    retain_velocity_time_series=True,  # only Sv is needed here, not Sd
 )
 ground_velocity = integrate_to_velocity(filtered, sampling_rate_hz)
 absolute_velocity = detailed.sv_time_series_cm_s + ground_velocity[:, np.newaxis, :]

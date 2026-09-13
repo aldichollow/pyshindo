@@ -80,7 +80,14 @@ from .spectrum_intensity import (
 from .synthetic import scale_acceleration_to_intensity, synthetic_three_component_motion
 from .units import STANDARD_GRAVITY_MPS2, AccelerationUnit, convert_acceleration, to_gal
 from .validation import SamplingDiagnostics, sampling_diagnostics
-from .velocity import component_peak_velocity, integrate_to_velocity, peak_ground_velocity
+from .velocity import (
+    component_peak_displacement,
+    component_peak_velocity,
+    integrate_to_displacement,
+    integrate_to_velocity,
+    peak_ground_displacement,
+    peak_ground_velocity,
+)
 
 __all__ = [
     "INTENSITY_INTERVALS",
@@ -124,6 +131,7 @@ __all__ = [
     "classify_intensity_array",
     "compare_intensity_methods",
     "component_peak_acceleration",
+    "component_peak_displacement",
     "component_peak_velocity",
     "convert_acceleration",
     "cosine_taper",
@@ -136,6 +144,7 @@ __all__ = [
     "duration_threshold_at",
     "exceedance_duration",
     "filter_stage_response",
+    "integrate_to_displacement",
     "integrate_to_velocity",
     "intensity_from_acceleration",
     "intensity_interval",
@@ -147,6 +156,7 @@ __all__ = [
     "lowrate_stability_lower_bounds",
     "measured_intensity",
     "peak_ground_acceleration",
+    "peak_ground_displacement",
     "peak_ground_velocity",
     "published_lowrate_gamma_set",
     "realtime_filter_response",

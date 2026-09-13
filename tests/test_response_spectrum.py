@@ -116,16 +116,6 @@ def test_sd_and_sv_match_the_shared_solver_directly() -> None:
     np.testing.assert_allclose(result.sv_cm_s, expected_sv)
 
 
-def test_psa_is_omega_squared_times_sd() -> None:
-    acc = record()[:, :1]
-    result = calculate_response_spectrum(
-        acc, RATE, unit="gal", damping_ratio=DAMPING, periods_s=PERIODS
-    )
-    omega = 2.0 * np.pi / PERIODS
-    expected_psa = (omega**2)[:, np.newaxis] * result.sd_cm
-    np.testing.assert_allclose(result.psa_gal, expected_psa)
-
-
 def test_response_is_reported_per_component_not_combined() -> None:
     acc = record()
     result = calculate_response_spectrum(
@@ -133,6 +123,7 @@ def test_response_is_reported_per_component_not_combined() -> None:
     )
     assert result.sd_cm.shape == (len(PERIODS), 3)
     assert result.sv_cm_s.shape == (len(PERIODS), 3)
+    assert result.psv_cm_s.shape == (len(PERIODS), 3)
     assert result.psa_gal.shape == (len(PERIODS), 3)
 
 
@@ -158,27 +149,65 @@ def test_unit_conversion_scales_response_consistently() -> None:
     np.testing.assert_allclose(result_gal.sv_cm_s, result_ms2.sv_cm_s, rtol=1e-10)
 
 
-def test_retain_time_series_returns_both_series_only_when_asked() -> None:
+def test_retain_time_series_flags_are_independent() -> None:
     acc = record(duration_s=3.0)[:, :2]
+    expected_shape = (acc.shape[0], len(PERIODS), 2)
+
     default = calculate_response_spectrum(
         acc, RATE, unit="gal", damping_ratio=DAMPING, periods_s=PERIODS
     )
-    retained = calculate_response_spectrum(
-        acc, RATE, unit="gal", damping_ratio=DAMPING, periods_s=PERIODS, retain_time_series=True
-    )
     assert default.sd_time_series_cm is None
     assert default.sv_time_series_cm_s is None
-    assert retained.sd_time_series_cm is not None
-    assert retained.sv_time_series_cm_s is not None
-    expected_shape = (acc.shape[0], len(PERIODS), 2)
-    assert retained.sd_time_series_cm.shape == expected_shape
-    assert retained.sv_time_series_cm_s.shape == expected_shape
-    np.testing.assert_allclose(
-        retained.sd_cm, np.abs(retained.sd_time_series_cm).max(axis=0)
+
+    displacement_only = calculate_response_spectrum(
+        acc,
+        RATE,
+        unit="gal",
+        damping_ratio=DAMPING,
+        periods_s=PERIODS,
+        retain_displacement_time_series=True,
+    )
+    assert displacement_only.sd_time_series_cm is not None
+    assert displacement_only.sd_time_series_cm.shape == expected_shape
+    assert displacement_only.sv_time_series_cm_s is None
+
+    velocity_only = calculate_response_spectrum(
+        acc,
+        RATE,
+        unit="gal",
+        damping_ratio=DAMPING,
+        periods_s=PERIODS,
+        retain_velocity_time_series=True,
+    )
+    assert velocity_only.sv_time_series_cm_s is not None
+    assert velocity_only.sv_time_series_cm_s.shape == expected_shape
+    assert velocity_only.sd_time_series_cm is None
+
+    both = calculate_response_spectrum(
+        acc,
+        RATE,
+        unit="gal",
+        damping_ratio=DAMPING,
+        periods_s=PERIODS,
+        retain_displacement_time_series=True,
+        retain_velocity_time_series=True,
     )
     np.testing.assert_allclose(
-        retained.sv_cm_s, np.abs(retained.sv_time_series_cm_s).max(axis=0)
+        both.sd_cm, np.abs(both.sd_time_series_cm).max(axis=0)
     )
+    np.testing.assert_allclose(
+        both.sv_cm_s, np.abs(both.sv_time_series_cm_s).max(axis=0)
+    )
+
+
+def test_psv_and_psa_are_derived_from_sd() -> None:
+    acc = record()[:, :1]
+    result = calculate_response_spectrum(
+        acc, RATE, unit="gal", damping_ratio=DAMPING, periods_s=PERIODS
+    )
+    omega = 2.0 * np.pi / PERIODS
+    np.testing.assert_allclose(result.psv_cm_s, omega[:, np.newaxis] * result.sd_cm)
+    np.testing.assert_allclose(result.psa_gal, (omega**2)[:, np.newaxis] * result.sd_cm)
 
 
 def test_invalid_damping_ratio_is_rejected() -> None:

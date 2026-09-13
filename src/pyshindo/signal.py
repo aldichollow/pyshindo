@@ -217,6 +217,26 @@ class ClippingReport:
         """Return the sorted, deduplicated component indices with a flagged interval."""
         return tuple(sorted({interval.component for interval in self.intervals}))
 
+    def __str__(self) -> str:
+        """Return a short summary instead of dumping every interval.
+
+        A record with many flagged intervals would otherwise print as a wall
+        of ``ClippingInterval`` tuples; ``repr(report)`` still gives that
+        full detail when it is actually wanted.
+        """
+        if not self.intervals:
+            return (
+                f"ClippingReport: no suspected clipping "
+                f"({self.component_count} component(s), {self.sample_count} sample(s))"
+            )
+        per_component: dict[int, int] = {}
+        for interval in self.intervals:
+            per_component[interval.component] = per_component.get(interval.component, 0) + 1
+        breakdown = ", ".join(
+            f"component {component}: {count}" for component, count in sorted(per_component.items())
+        )
+        return f"ClippingReport: {len(self.intervals)} suspected interval(s) ({breakdown})"
+
 
 def _repeated_value_mask(column: FloatArray, repeat_threshold: int) -> npt.NDArray[np.bool_]:
     """Return True for every sample in a run of at least ``repeat_threshold`` equal values."""

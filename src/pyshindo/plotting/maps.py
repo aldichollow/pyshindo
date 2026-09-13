@@ -42,7 +42,7 @@ from ..scale import IntensityScale
 from .theme import JMA_INTENSITY_COLORS, LONG_PERIOD_CLASS_COLORS, require_plotly
 
 _MARKER_SIZE: Final = 11
-_HALO_SIZE: Final = _MARKER_SIZE + 5
+_HALO_SIZE_MARGIN: Final = 5
 _HALO_COLOR: Final = "#FFFFFF"
 _FONT_FAMILY: Final = "Helvetica Neue, Helvetica, Arial, Noto Sans JP, sans-serif"
 _DEFAULT_ZOOM: Final = 5.0
@@ -77,6 +77,11 @@ def _resolve_labels(labels: Sequence[str] | None, count: int) -> Sequence[str]:
     return labels
 
 
+def _validate_marker_size(marker_size: float) -> None:
+    if not np.isfinite(marker_size) or marker_size <= 0.0:
+        raise ValueError("marker_size must be finite and greater than zero.")
+
+
 def _map_layout(
     lat: npt.NDArray[np.float64], lon: npt.NDArray[np.float64], title: str, map_style: str
 ) -> dict[str, Any]:
@@ -106,6 +111,7 @@ def _halo_trace(
     lat: npt.NDArray[np.float64],
     lon: npt.NDArray[np.float64],
     *,
+    marker_size: float,
     legendgroup: str | None = None,
 ) -> Any:
     """A white, oversized, non-interactive marker trace drawn behind the real one.
@@ -113,15 +119,17 @@ def _halo_trace(
     Stands in for the border ``Scattermap`` markers cannot have (unlike
     ``Scatter``, they have no ``marker.line``), so colored markers read as
     outlined circles instead of blending into whatever the basemap shows
-    underneath. Sharing ``legendgroup`` with the marker trace it backs makes
-    Plotly hide both together when that trace's legend entry is toggled --
-    without it, this trace would stay on screen as an unlabeled dot.
+    underneath. Sized relative to the real marker (``marker_size +
+    _HALO_SIZE_MARGIN``) so the halo scales along with it. Sharing
+    ``legendgroup`` with the marker trace it backs makes Plotly hide both
+    together when that trace's legend entry is toggled -- without it, this
+    trace would stay on screen as an unlabeled dot.
     """
     return go.Scattermap(
         lat=lat,
         lon=lon,
         mode="markers",
-        marker={"size": _HALO_SIZE, "color": _HALO_COLOR, "opacity": 1.0},
+        marker={"size": marker_size + _HALO_SIZE_MARGIN, "color": _HALO_COLOR, "opacity": 1.0},
         hoverinfo="skip",
         showlegend=False,
         legendgroup=legendgroup,
@@ -139,8 +147,10 @@ def _discrete_class_figure(
     labels: Sequence[str] | None,
     title: str,
     map_style: str,
+    marker_size: float,
 ) -> Any:
     go, _, _ = require_plotly()
+    _validate_marker_size(marker_size)
     count = len(classes)
     lat, lon = _validate_coordinates(latitudes_deg, longitudes_deg, count)
     resolved_labels = _resolve_labels(labels, count)
@@ -153,7 +163,9 @@ def _discrete_class_figure(
         indices = np.flatnonzero(mask)
         class_lat, class_lon = lat[indices], lon[indices]
         group = str(class_label(scale))
-        figure.add_trace(_halo_trace(go, class_lat, class_lon, legendgroup=group))
+        figure.add_trace(
+            _halo_trace(go, class_lat, class_lon, marker_size=marker_size, legendgroup=group)
+        )
         figure.add_trace(
             go.Scattermap(
                 lat=class_lat,
@@ -162,7 +174,7 @@ def _discrete_class_figure(
                 name=class_label(scale),
                 legendgroup=group,
                 marker={
-                    "size": _MARKER_SIZE,
+                    "size": marker_size,
                     "color": colors[scale],
                     "opacity": 0.95,
                 },
@@ -186,6 +198,7 @@ def intensity_map_figure(
     labels: Sequence[str] | None = None,
     title: str = "Seismic intensity distribution",
     map_style: str = _DEFAULT_MAP_STYLE,
+    marker_size: float = _MARKER_SIZE,
 ) -> Any:
     """Plot measured seismic intensity classes at their observation points.
 
@@ -195,6 +208,8 @@ def intensity_map_figure(
     trace, so the legend reads as a proper key rather than a gradient.
 
     ``map_style`` selects the basemap; see the module docstring.
+    ``marker_size`` shrinks markers for a dense map of many stations, or
+    grows them for a sparse one; the white halo scales along with it.
     """
     scales = [
         value if isinstance(value, IntensityScale) else IntensityScale(value)
@@ -210,6 +225,7 @@ def intensity_map_figure(
         labels=labels,
         title=title,
         map_style=map_style,
+        marker_size=marker_size,
     )
 
 
@@ -221,6 +237,7 @@ def long_period_class_map_figure(
     labels: Sequence[str] | None = None,
     title: str = "Long-period ground motion class distribution",
     map_style: str = _DEFAULT_MAP_STYLE,
+    marker_size: float = _MARKER_SIZE,
 ) -> Any:
     """Plot long-period ground motion classes at their observation points.
 
@@ -229,6 +246,8 @@ def long_period_class_map_figure(
     observation pages.
 
     ``map_style`` selects the basemap; see the module docstring.
+    ``marker_size`` shrinks markers for a dense map of many stations, or
+    grows them for a sparse one; the white halo scales along with it.
     """
     resolved = [
         value if isinstance(value, LongPeriodClass) else LongPeriodClass(value)
@@ -244,6 +263,7 @@ def long_period_class_map_figure(
         labels=labels,
         title=title,
         map_style=map_style,
+        marker_size=marker_size,
     )
 
 
@@ -257,6 +277,7 @@ def continuous_value_map_figure(
     colorscale: str = "YlOrRd",
     title: str = "Station distribution",
     map_style: str = _DEFAULT_MAP_STYLE,
+    marker_size: float = _MARKER_SIZE,
 ) -> Any:
     """Plot a continuous per-station value (SI, PGV, PGA, ...) on a map.
 
@@ -266,8 +287,11 @@ def continuous_value_map_figure(
     own colorbar rather than several discrete-class traces.
 
     ``map_style`` selects the basemap; see the module docstring.
+    ``marker_size`` shrinks markers for a dense map of many stations, or
+    grows them for a sparse one; the white halo scales along with it.
     """
     go, _, _ = require_plotly()
+    _validate_marker_size(marker_size)
     array = np.asarray(values, dtype=np.float64)
     if array.ndim != 1:
         raise ValueError("values must be one-dimensional.")
@@ -275,14 +299,14 @@ def continuous_value_map_figure(
     resolved_labels = _resolve_labels(labels, array.size)
 
     figure = go.Figure()
-    figure.add_trace(_halo_trace(go, lat, lon))
+    figure.add_trace(_halo_trace(go, lat, lon, marker_size=marker_size))
     figure.add_trace(
         go.Scattermap(
             lat=lat,
             lon=lon,
             mode="markers",
             marker={
-                "size": _MARKER_SIZE,
+                "size": marker_size,
                 "color": array,
                 "colorscale": colorscale,
                 "showscale": True,

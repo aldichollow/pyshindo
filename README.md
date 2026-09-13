@@ -6,13 +6,11 @@
 
 `pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
 
-計測震度に加えて、長周期地震動階級(周期1.6〜7.8秒の絶対速度応答スペクトルから求める気象庁のもう一つの指標)、PGV(最大速度)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
 
 詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
 
 本パッケージは個人が趣味として開発しているものです。計算結果の正確性・完全性を保証するものではありませんので、ご利用は自己判断・自己責任でお願いします。
-
-なお、気象業務法の予報業務許可(第17条)は「今後生じる地震動を予想して発表する」行為が対象で、本パッケージが行う「既に観測された記録から事後的に震度や長周期地震動階級を計算する」こととは性質が異なります([予報業務の許可について](https://www.jma.go.jp/jma/kishou/minkan/kyoka.html))。
 
 ---
 
@@ -29,10 +27,10 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Exact rolling order statistics for a 60-second real-time window without discretizing intensity into fixed-width bins.
 - Stateful chunk and single-sample APIs whose results are invariant to chunk boundaries.
 - Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
-- Velocity by cumulative trapezoidal integration, and PGV -- with the baseline treatment left to the caller rather than applied silently.
+- Velocity and displacement by cumulative trapezoidal integration, and PGV/PGD -- with the baseline treatment left to the caller rather than applied silently. Displacement compounds the same drift a second time, so it is considerably more baseline-sensitive than velocity.
 - The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Every class matches JMA's own published values across 268 stations of two earthquakes; the response spectra themselves agree to about 1e-5, worst case, over the stations checked.
 - Housner's spectrum intensity (SI value), per component: the relative-velocity response spectrum averaged over the 0.1-2.5 s period band, sharing the same linear-acceleration-method oscillator solver as the long-period class but without its absolute-velocity or component-combination steps, plus a streaming estimator with the same cumulative-maximum behavior as the long-period class's.
-- A general elastic response spectrum (`calculate_response_spectrum`): relative displacement, relative velocity, and pseudo-acceleration for any damping ratio and period grid, sharing the same oscillator solver as the long-period class and SI value without either one's own conventions baked in.
+- A general elastic response spectrum (`calculate_response_spectrum`): relative displacement, relative velocity, pseudo-velocity, and pseudo-acceleration for any damping ratio and period grid, sharing the same oscillator solver as the long-period class and SI value without either one's own conventions baked in.
 - `detect_clipping`: a diagnostic-only check for saturated samples, by a known digitizer range and/or a run of repeated values near a component's own peak. Never applied automatically.
 - Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
@@ -122,24 +120,30 @@ print(trace.approximate_intensity_raw)
 print(trace.approximate_intensity)
 ```
 
-## Velocity and PGV
+## Velocity, displacement, PGV, and PGD
 
 ```python
-from pyshindo import peak_ground_velocity, remove_offset
+from pyshindo import peak_ground_displacement, peak_ground_velocity, remove_offset
 
 pgv = peak_ground_velocity(remove_offset(acceleration), 100.0, unit="gal")
+pgd = peak_ground_displacement(remove_offset(acceleration), 100.0, unit="gal")
 ```
 
 Velocity comes from cumulative trapezoidal integration and is always returned in
-cm/s (kine). Nothing is baseline-corrected on your behalf: integration cannot
-distinguish a baseline error from real long-period motion, so a record with a
-nonzero mean integrates into a linearly drifting velocity. Apply
-`remove_offset`, `detrend_acceleration`, or a high-pass filter first, and say
-which one you used. See [`examples/06_peak_velocity.py`](examples/06_peak_velocity.py).
+cm/s (kine); displacement integrates that same velocity a second time and is
+always returned in cm. Nothing is baseline-corrected on your behalf:
+integration cannot distinguish a baseline error from real long-period motion,
+so a record with a nonzero mean integrates into a linearly drifting velocity
+-- and, one integration further, a *quadratically* drifting displacement, so
+PGD is considerably more sensitive to an uncorrected baseline than PGV is.
+Apply `remove_offset`, `detrend_acceleration`, or a high-pass filter first,
+and say which one you used. See
+[`examples/06_peak_velocity.py`](examples/06_peak_velocity.py).
 
-`peak_ground_velocity` takes the resultant of whichever components you pass, the
-same as `peak_ground_acceleration`: three components give the three-component
-resultant, two horizontals give the horizontal PGV.
+`peak_ground_velocity`/`peak_ground_displacement` take the resultant of
+whichever components you pass, the same as `peak_ground_acceleration`: three
+components give the three-component resultant, two horizontals give the
+horizontal PGV/PGD.
 
 JMA's own published peak velocity, in the `max.csv` of a long-period ground
 motion observation page, does not match this default -- but does match, to
@@ -185,7 +189,7 @@ print(result.si_cm_s)   # one value per component, not combined
 ```
 
 Housner's SI: `SI = (1/2.4) * integral[0.1, 2.5] Sv(T, h=0.20) dT`, where `Sv`
-is the *relative* velocity response spectrum -- not the absolute response the
+is the _relative_ velocity response spectrum -- not the absolute response the
 long-period class uses, and not combined across horizontal components,
 matching the same choice `peak_ground_velocity` leaves to the caller. The
 oscillator response itself shares the long-period class's linear-acceleration
@@ -254,18 +258,18 @@ interactive window.
 
 |                                                                     |                                                                                                    |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| [`00_quickstart.py`](examples/00_quickstart.py)                     | Every headline result in one page: measured intensity, real-time intensity, PGV, long-period class |
+| [`00_quickstart.py`](examples/00_quickstart.py)                     | Every headline result in one page: measured intensity, real-time intensity, PGV/PGD, long-period class, SI value |
 | [`01_measured_intensity.py`](examples/01_measured_intensity.py)     | The FFT reference calculation and its intermediate waveforms                                       |
 | [`02_realtime_intensity.py`](examples/02_realtime_intensity.py)     | Real-time replay, and comparison against the FFT reference                                         |
 | [`03_official_jma_record.py`](examples/03_official_jma_record.py)   | Reproducing JMA's own published intensity from a downloaded record                                 |
 | [`04_filter_designs.py`](examples/04_filter_designs.py)             | The three causal filters and their named analog stages                                             |
 | [`05_streaming_sample_api.py`](examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time                                                         |
-| [`06_peak_velocity.py`](examples/06_peak_velocity.py)               | PGV, and why baseline treatment has to be your choice                                              |
+| [`06_peak_velocity.py`](examples/06_peak_velocity.py)               | PGV, PGD, and why baseline treatment has to be your choice (PGD more so)                           |
 | [`07_obspy_interop.py`](examples/07_obspy_interop.py)               | Converting an ObsPy stream into this package's arrays                                              |
 | [`08_long_period.py`](examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
 | [`09_spectrum_intensity.py`](examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
 | [`10_station_map.py`](examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
-| [`11_response_spectrum.py`](examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it            |
+| [`11_response_spectrum.py`](examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it           |
 
 ## Development
 

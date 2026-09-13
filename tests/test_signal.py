@@ -198,6 +198,23 @@ def test_detect_clipping_handles_an_all_zero_component() -> None:
     assert not report.any_suspected
 
 
+def test_clipping_report_str_summarizes_instead_of_dumping_every_interval() -> None:
+    acc = np.zeros((200, 3))
+    acc[50:55, 1] = 800.0
+    acc[100:105, 1] = 800.0
+    report = detect_clipping(acc)
+    text = str(report)
+    assert "2 suspected interval(s)" in text
+    assert "component 1: 2" in text
+    assert "ClippingInterval" not in text  # a summary, not a field dump
+
+
+def test_clipping_report_str_reports_no_suspected_clipping_when_clean() -> None:
+    acc = np.zeros((50, 2))
+    report = detect_clipping(acc)
+    assert "no suspected clipping" in str(report)
+
+
 def test_detect_clipping_never_corrects_the_input() -> None:
     acc = np.full((20, 1), 2000.0)
     before = acc.copy()

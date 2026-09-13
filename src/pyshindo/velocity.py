@@ -1,4 +1,4 @@
-"""Velocity integration and peak ground velocity."""
+"""Velocity and displacement integration, peak ground velocity, and peak ground displacement."""
 
 from __future__ import annotations
 
@@ -103,3 +103,104 @@ def peak_ground_velocity(
         component_axis=component_axis,
     )
     return float(np.max(vector_resultant(velocity)))
+
+
+def integrate_to_displacement(
+    acceleration: ArrayLike,
+    sampling_rate_hz: float = 100.0,
+    *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
+    component_axis: int = -1,
+) -> FloatArray:
+    """Integrate acceleration to displacement in cm, via velocity.
+
+    Two cumulative trapezoidal integrations -- the same method
+    :func:`integrate_to_velocity` uses for the first of them -- starting
+    from zero velocity and zero displacement. Input is converted to gal
+    first, so the result is always cm regardless of the input unit.
+
+    Notes
+    -----
+    Every baseline caveat in :func:`integrate_to_velocity` applies here
+    twice over, and compounds: a nonzero-mean acceleration integrates into
+    a velocity that drifts *linearly*, which then integrates into a
+    displacement that drifts *quadratically*. A baseline error small enough
+    to be a rounding footnote for peak velocity can dominate peak
+    displacement outright. This is, again, the arithmetic working
+    correctly on whatever signal it is given -- integration still cannot
+    tell a real long-period displacement from an uncorrected baseline --
+    but it means baseline treatment matters considerably more here than for
+    velocity, not less.
+
+    No baseline correction is applied. :func:`~pyshindo.signal.remove_offset`
+    and :func:`~pyshindo.signal.detrend_acceleration` are the same starting
+    points :func:`integrate_to_velocity` documents; published strong-motion
+    practice for displacement commonly corrects the intermediate velocity as
+    well as the acceleration, not the acceleration alone, since either stage
+    can introduce its own residual drift.
+    """
+    velocity = integrate_to_velocity(
+        acceleration,
+        sampling_rate_hz,
+        unit=unit,
+        component_axis=component_axis,
+    )
+    rate = validate_sampling_rate(sampling_rate_hz, warn_nonstandard=False)
+    displacement = scipy_integrate.cumulative_trapezoid(
+        velocity,
+        dx=1.0 / rate,
+        axis=0,
+        initial=0,
+    )
+    return np.ascontiguousarray(displacement, dtype=np.float64)
+
+
+def component_peak_displacement(
+    acceleration: ArrayLike,
+    sampling_rate_hz: float = 100.0,
+    *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
+    component_axis: int = -1,
+) -> FloatArray:
+    """Return the maximum absolute displacement of each component in cm.
+
+    This mirrors :func:`component_peak_velocity` and
+    :func:`~pyshindo.signal.component_peak_acceleration`. See
+    :func:`integrate_to_displacement` for the doubly compounded baseline
+    caveat that applies to every displacement derived by integration.
+    """
+    displacement = integrate_to_displacement(
+        acceleration,
+        sampling_rate_hz,
+        unit=unit,
+        component_axis=component_axis,
+    )
+    return np.max(np.abs(displacement), axis=0)
+
+
+def peak_ground_displacement(
+    acceleration: ArrayLike,
+    sampling_rate_hz: float = 100.0,
+    *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
+    component_axis: int = -1,
+) -> float:
+    """Return the peak vector-resultant displacement (PGD) in cm.
+
+    The resultant is taken over whichever components are supplied, matching
+    :func:`peak_ground_velocity` and
+    :func:`~pyshindo.signal.peak_ground_acceleration`: three components give
+    the three-component resultant, two horizontals give the horizontal PGD.
+    Neither convention is imposed here, for the same reason
+    :func:`peak_ground_velocity` leaves it open.
+
+    See :func:`integrate_to_displacement` for the baseline caveat -- it
+    applies more severely here than for PGV.
+    """
+    displacement = integrate_to_displacement(
+        acceleration,
+        sampling_rate_hz,
+        unit=unit,
+        component_axis=component_axis,
+    )
+    return float(np.max(vector_resultant(displacement)))

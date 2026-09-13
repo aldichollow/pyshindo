@@ -161,3 +161,25 @@ def test_hover_label_text_is_readable_against_its_white_background() -> None:
     figure = continuous_value_map_figure(LAT, LON, [1.0, 2.0, 3.0, 4.0], value_label="x")
     assert figure.layout.hoverlabel.bgcolor == "#FFFFFF"
     assert figure.layout.hoverlabel.font.color == "#1A1A1A"
+
+
+def test_marker_size_is_overridable_and_the_halo_scales_with_it() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 2.0, 3.0, 4.0], value_label="x", marker_size=20.0
+    )
+    halo, marker = figure.data
+    assert marker.marker.size == 20.0
+    assert halo.marker.size == 25.0  # marker_size + the fixed halo margin
+
+
+def test_marker_size_is_overridable_for_discrete_class_maps() -> None:
+    figure = intensity_map_figure(LAT[:1], LON[:1], [IntensityScale.SEVEN], marker_size=6.0)
+    halo = next(trace for trace in figure.data if not trace.name)
+    named = next(trace for trace in figure.data if trace.name)
+    assert named.marker.size == 6.0
+    assert halo.marker.size == 11.0
+
+
+def test_non_positive_marker_size_is_rejected() -> None:
+    with pytest.raises(ValueError, match="marker_size"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", marker_size=0.0)

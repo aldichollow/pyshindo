@@ -23,17 +23,22 @@ quietly choosing between the relative and absolute conventions the two
 existing features actually use, rather than leaving that choice explicit.
 A caller wanting an absolute response spectrum can add
 :func:`pyshindo.velocity.integrate_to_velocity` (already public) to
-``sv_time_series_cm_s`` sample by sample -- set ``retain_time_series`` to get
-that series -- and take the maximum of the sum; the peak of a sum is not the
-sum of the peaks, so this cannot be done from ``sv_cm_s`` alone.
+``sv_time_series_cm_s`` sample by sample -- set ``retain_velocity_time_series``
+to get that series -- and take the maximum of the sum; the peak of a sum is
+not the sum of the peaks, so this cannot be done from ``sv_cm_s`` alone.
 
-Pseudo-acceleration (``psa_gal = omega**2 * sd_cm``) is the standard
-earthquake-engineering approximation to the peak absolute acceleration
-response, exact only in the limit of zero damping. True absolute
-acceleration response (relative acceleration plus ground acceleration) is
-*not* implemented: it needs its own closed-form transfer function and a
-primary-source check on its definition, neither of which has been done, so
-it is left out rather than guessed at.
+Pseudo-velocity (``psv_cm_s = omega * sd_cm``) and pseudo-acceleration
+(``psa_gal = omega**2 * sd_cm``) are both derived directly from ``sd_cm``,
+so both are always returned alongside it at no extra cost. They are the
+standard earthquake-engineering approximations to the peak relative
+velocity and peak absolute acceleration response respectively -- exact only
+in the limit of zero damping, and the reason building-code-style response
+spectra are conventionally reported as an Sd/PSV/PSA triple rather than the
+true ``Sv`` this module also computes. True absolute acceleration response
+(relative acceleration plus ground acceleration) is *not* implemented: it
+needs its own closed-form transfer function and a primary-source check on
+its definition, neither of which has been done, so it is left out rather
+than guessed at.
 
 The oscillator solver itself is :mod:`pyshindo._spectral_response`, shared
 with :mod:`pyshindo.long_period` and :mod:`pyshindo.spectrum_intensity`; see
@@ -76,16 +81,19 @@ class ResponseSpectrumResult:
 
     ``sd_cm`` and ``sv_cm_s`` are the relative displacement and velocity
     response spectra themselves -- the peak response at each period, shaped
-    ``(periods, components)`` -- and are always present. ``psa_gal`` is the
-    pseudo-acceleration spectrum derived from ``sd_cm`` (see the module
-    docstring for what it approximates and what it does not).
-    ``sd_time_series_cm`` and ``sv_time_series_cm_s`` are the much larger
-    full per-sample responses, ``(samples, periods, components)``, kept only
-    when ``retain_time_series`` was set.
+    ``(periods, components)`` -- and are always present. ``psv_cm_s`` and
+    ``psa_gal`` are the pseudo-velocity and pseudo-acceleration spectra
+    derived from ``sd_cm`` (see the module docstring for what they
+    approximate and what they do not); deriving both costs nothing extra,
+    so both are always present too. ``sd_time_series_cm`` and
+    ``sv_time_series_cm_s`` are the much larger full per-sample responses,
+    ``(samples, periods, components)``, each kept only when its own
+    ``retain_*_time_series`` flag was set.
     """
 
     sd_cm: FloatArray
     sv_cm_s: FloatArray
+    psv_cm_s: FloatArray
     psa_gal: FloatArray
     periods_s: FloatArray
     damping_ratio: float
@@ -110,7 +118,8 @@ def calculate_response_spectrum(
     damping_ratio: float,
     periods_s: npt.ArrayLike,
     component_axis: int = -1,
-    retain_time_series: bool = False,
+    retain_displacement_time_series: bool = False,
+    retain_velocity_time_series: bool = False,
 ) -> ResponseSpectrumResult:
     """Calculate the relative elastic response spectrum for each acceleration component.
 
@@ -127,19 +136,22 @@ def calculate_response_spectrum(
         sufficiently smooth input.
     unit:
         ``"gal"``, ``"m/s^2"``, or ``"g"``. Results are always in cm (``sd_cm``),
-        cm/s (``sv_cm_s``), and gal (``psa_gal``).
+        cm/s (``sv_cm_s``, ``psv_cm_s``), and gal (``psa_gal``).
     damping_ratio:
         Required, not defaulted: JMA's long-period class uses 5 percent,
         Housner's SI value uses 20 percent, and a general-purpose function has
         no house convention of its own to fall back to.
     periods_s:
         Required, not defaulted, for the same reason as ``damping_ratio``.
-    retain_time_series:
+    retain_displacement_time_series:
         Keep the full ``(samples, periods, components)`` per-sample relative
-        displacement and velocity, in ``sd_time_series_cm`` and
-        ``sv_time_series_cm_s``. Off by default because it is one array per
-        period rather than one scalar. The peak-per-period spectra,
-        ``sd_cm`` and ``sv_cm_s``, are always returned regardless of this flag.
+        displacement, in ``sd_time_series_cm``. Off by default because it is
+        one array per period rather than one scalar, and independent of
+        ``retain_velocity_time_series`` so a caller who only needs one series
+        (for example, reconstructing an absolute *velocity* response
+        spectrum) does not pay to compute and hold the other.
+    retain_velocity_time_series:
+        The same, for relative velocity, in ``sv_time_series_cm_s``.
 
     Notes
     -----
@@ -160,19 +172,21 @@ def calculate_response_spectrum(
     response_started = time.perf_counter()
     bank = design_oscillator_bank(periods, damping_ratio, rate)
     displacement_peaks, displacement_series = relative_displacement_response(
-        bank, values_gal, collect=retain_time_series
+        bank, values_gal, collect=retain_displacement_time_series
     )
     velocity_peaks, velocity_series = relative_velocity_response(
-        bank, values_gal, collect=retain_time_series
+        bank, values_gal, collect=retain_velocity_time_series
     )
     response_elapsed = time.perf_counter() - response_started
 
     omega = 2.0 * np.pi / periods
+    psv_cm_s = omega[:, np.newaxis] * displacement_peaks
     psa_gal = (omega**2)[:, np.newaxis] * displacement_peaks
 
     return ResponseSpectrumResult(
         sd_cm=displacement_peaks,
         sv_cm_s=velocity_peaks,
+        psv_cm_s=psv_cm_s,
         psa_gal=psa_gal,
         periods_s=periods,
         damping_ratio=float(damping_ratio),

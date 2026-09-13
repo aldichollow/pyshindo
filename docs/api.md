@@ -130,19 +130,25 @@ detect_clipping(acceleration, *, max_range_gal=None, range_tolerance=0.001,
 
 `detect_clipping`は診断専用です。値の補正・削除は一切行わず、他のどの計算関数からも自動的には呼ばれません。検知方式は2種類で、両方を独立に評価します: `max_range_gal`(既知のデジタイザのフルスケール、未指定ならこの方式は無効)付近に張り付いたサンプルと、`repeat_threshold`回以上連続する完全に同一の値のうち、その成分自身の最大振幅の`extreme_fraction`倍以上の区間にあるもの(静穏なノイズフロアでの量子化による偶然の一致を誤検知しないための制約)。実データ268観測点(`docs/validation.md`と同じ検証コーパス)で確認したところクリッピングはゼロでしたが、境界的な誤検知が2件あり、いずれも振幅0.5 gal未満の非常に静かな観測点で、公表波形が小数3桁に丸められていることによる滑らかなピーク付近での値の停滞が原因でした(クリッピングではありません)。詳細はdocstringを参照してください。
 
-## 速度・PGV
+## 速度・変位・PGV・PGD
 
 ```python
 integrate_to_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
 component_peak_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
 peak_ground_velocity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> float
+
+integrate_to_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
+component_peak_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
+peak_ground_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> float
 ```
 
-加速度を台形則で累積積分して速度を得ます。入力単位に関わらず内部でgalへ変換するため、戻り値は常にcm/s(カイン)です。
+加速度を台形則で累積積分して速度を得ます。変位は同じ台形則でその速度をもう一度積分したものです(`integrate_to_displacement`は内部で`integrate_to_velocity`を呼んでいます)。入力単位に関わらず内部でgalへ変換するため、戻り値は速度が常にcm/s(カイン)、変位が常にcmです。
 
 ベースライン処理(オフセット除去・トレンド除去・ハイパスフィルタ)は一切自動適用しません。積分は「本物の長周期成分」と「ベースラインの誤差」を区別できないため、平均がゼロでない記録(上下動に重力成分が残っている場合を含む)を積分すると速度は直線的にドリフトします。これは演算が正しく働いた結果であって不具合ではありません。どの補正が適切かは記録と目的によって変わるので、`remove_offset`(事前区間を `baseline_samples` で指定)や `detrend_acceleration` を明示的に呼び出してください。強震観測の実務ではハイパスフィルタを用いることも一般的です。
 
-`peak_ground_velocity` は渡された成分の合成値を返します(`peak_ground_acceleration` と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGVになります。どちらを採るかは解析側の選択なので、この関数側では固定していません。
+**変位はこのドリフトが二重に効きます。** 速度の直線的なドリフトをもう一度積分すると、変位は**二次関数的に**ドリフトします。実際に測定したところ、記録長を2倍にすると変位側のドリフトはおよそ4倍になりました(速度は2倍のまま)。PGVでは無視できる程度の基線誤差が、PGDでは支配的になり得るということです。強震動の実務では、加速度だけでなく中間の速度にも基線補正をかけることが一般的です。
+
+`peak_ground_velocity`・`peak_ground_displacement`はどちらも渡された成分の合成値を返します(`peak_ground_acceleration`と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGV/PGDになります。どちらを採るかは解析側の選択なので、これらの関数側では固定していません。
 
 気象庁「長周期地震動の観測結果」ページが`max.csv`で公表している最大速度は、この既定(補正なしの台形積分)とは一致しません。代わりに、長周期地震動階級の計算で使っている20秒ハイパスを加速度に先に適用してから積分すると、268観測点で相対誤差の中央値0.01%程度まで一致します。このハイパスは`pyshindo.long_period.apply_ground_motion_high_pass`として公開しています:
 
@@ -193,24 +199,26 @@ SpectrumIntensityEstimator(sampling_rate_hz=100.0, *, unit="gal",
 
 `pyshindo.long_period.LongPeriodEstimator`と同じ「記録開始からの累積最大値」という挙動です(ローリングウィンドウではありません)。ただし、長周期地震動階級・SI値のどちらも気象庁が公表した公式のリアルタイム計算方法があるわけではなく、この累積最大値という解釈はどちらもこのパッケージ独自の設計判断である点に注意してください(公式のリアルタイム近似フィルタが存在する計測震度の`RealtimeIntensityEstimator`とはこの点が異なります)。バッチ計算(`calculate_spectrum_intensity`の既定ソルバー)とは演算順序が異なるため浮動小数点の丸め水準で一致し、ビット単位の一致ではありません。既定の121点グリッドは長周期地震動階級の32点の約3.8倍ですが、1サンプルあたりの処理コストは実測で約1.1倍にとどまります(周期方向の演算が既にNumPyでベクトル化されているため)。
 
-## 弾性応答スペクトル(Sd/Sv/PSA)
+## 弾性応答スペクトル(Sd/Sv/PSV/PSA)
 
 ```python
 calculate_response_spectrum(acceleration, sampling_rate_hz=100.0, *, unit="gal",
-                             damping_ratio, periods_s,
-                             component_axis=-1, retain_time_series=False)
+                             damping_ratio, periods_s, component_axis=-1,
+                             retain_displacement_time_series=False,
+                             retain_velocity_time_series=False)
     -> ResponseSpectrumResult
 
-result.sd_cm    # 変位応答スペクトル [cm]、shape (周期数, 成分数)
-result.sv_cm_s   # 速度応答スペクトル [cm/s]
-result.psa_gal   # 擬似加速度応答スペクトル [gal] = omega^2 * sd_cm
+result.sd_cm     # 変位応答スペクトル [cm]、shape (周期数, 成分数)
+result.sv_cm_s    # 速度応答スペクトル(真の相対速度応答)[cm/s]
+result.psv_cm_s   # 擬似速度応答スペクトル [cm/s] = omega * sd_cm
+result.psa_gal    # 擬似加速度応答スペクトル [gal] = omega^2 * sd_cm
 ```
 
 長周期地震動階級・SI値の両方が内部で共有している1自由度系ソルバー(`pyshindo._spectral_response`)を、そのままの形で公開する汎用関数です。`damping_ratio`・`periods_s`にはどちらも既定値がありません -- 長周期地震動階級(減衰5%、公式32点グリッド)・SI値(減衰20%、0.1〜2.5秒)のどちらの慣行を既定にしても「汎用」という位置づけと矛盾するため、呼び出し側が必ず明示します。
 
-**相対応答のみ**です。地動速度・地動変位の加算、成分合成はいずれも行いません(この相対応答にJMA固有の処理を足して絶対応答にする部分は`long_period`側が担います)。絶対応答スペクトルが欲しい場合は、`retain_time_series=True`で得られる`sv_time_series_cm_s`に、既存の`integrate_to_velocity`(公開関数)で求めた地動速度をサンプルごとに足してから最大値を取ってください(和の最大値は最大値の和と一致しないため、`sv_cm_s`だけからは絶対応答を再構成できません)。`examples/11_response_spectrum.py`で、この手順が`pyshindo.long_period`自身のSvaと一致することを確認しています。
+**相対応答のみ**です。地動速度・地動変位の加算、成分合成はいずれも行いません(この相対応答にJMA固有の処理を足して絶対応答にする部分は`long_period`側が担います)。絶対応答スペクトルが欲しい場合は、`retain_velocity_time_series=True`で得られる`sv_time_series_cm_s`に、既存の`integrate_to_velocity`(公開関数)で求めた地動速度をサンプルごとに足してから最大値を取ってください(和の最大値は最大値の和と一致しないため、`sv_cm_s`だけからは絶対応答を再構成できません)。`examples/11_response_spectrum.py`で、この手順が`pyshindo.long_period`自身のSvaと一致することを確認しています。変位・速度の時系列(`sd_time_series_cm`・`sv_time_series_cm_s`)はそれぞれ独立したフラグで保持するかどうかを選べます -- 片方しか使わない場合に、使わない方まで計算・保持するコストを避けるためです。
 
-擬似加速度(PSA = ω²×Sd)は絶対加速度応答の工学的近似で、減衰ゼロの極限でのみ厳密に一致します。真の絶対加速度応答(相対加速度+地動加速度)は、独自の伝達関数導出と一次資料での定義確認が必要なため実装していません。
+`psv_cm_s`(擬似速度、PSV = ω×Sd)・`psa_gal`(擬似加速度、PSA = ω²×Sd)はどちらも`sd_cm`から追加コストなしで導出できるため常に返します。いずれも絶対応答(それぞれ真の相対速度応答・絶対加速度応答)への工学的近似で、減衰ゼロの極限でのみ厳密に一致します。建築基準のような耐震工学の実務ではSd/PSV/PSAの3点セットで応答スペクトルを語ることが多く、この対応が取れるようにしています。真の絶対加速度応答(相対加速度+地動加速度)は、独自の伝達関数導出と一次資料での定義確認が必要なため実装していません。
 
 使用例は [`examples/11_response_spectrum.py`](../examples/11_response_spectrum.py) にあります。
 

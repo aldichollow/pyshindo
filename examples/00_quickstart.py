@@ -6,6 +6,7 @@ from pyshindo import (
     calculate_measured_intensity,
     calculate_realtime_intensity,
     calculate_spectrum_intensity,
+    peak_ground_displacement,
     peak_ground_velocity,
     remove_offset,
     scale_acceleration_to_intensity,
@@ -52,11 +53,15 @@ print(f"Real-time reported max:   {realtime.approximate_intensity:.1f}")
 raw_difference = measured.intensity_raw - realtime.approximate_intensity_raw
 print(f"Raw method difference:    {raw_difference:+.6f}")
 
-# %% Peak ground velocity
+# %% Peak ground velocity and displacement
 # Integration turns any baseline offset into a drift, so the correction is an
-# explicit choice rather than something applied silently. See examples/06.
-pgv = peak_ground_velocity(remove_offset(acceleration_gal), sampling_rate_hz, unit="gal")
+# explicit choice rather than something applied silently -- and displacement
+# drifts quadratically where velocity only drifts linearly. See examples/06.
+corrected = remove_offset(acceleration_gal)
+pgv = peak_ground_velocity(corrected, sampling_rate_hz, unit="gal")
+pgd = peak_ground_displacement(corrected, sampling_rate_hz, unit="gal")
 print(f"PGV:                      {pgv:.3f} cm/s")
+print(f"PGD:                      {pgd:.3f} cm")
 
 # %% Long-period ground motion class
 # A different JMA quantity, defined on the two horizontal components only.

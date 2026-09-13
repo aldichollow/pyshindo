@@ -127,7 +127,10 @@ def test_chunk_and_sample_timing_are_reported() -> None:
     chunk = RealtimeIntensityEstimator().process(values)
     assert chunk.timing.filter_s >= 0.0
     assert chunk.timing.order_statistic_s >= 0.0
-    assert chunk.timing.total_s >= chunk.timing.filter_s + chunk.timing.order_statistic_s
+    assert chunk.timing.reporting_s >= 0.0
+    assert chunk.timing.total_s >= (
+        chunk.timing.filter_s + chunk.timing.order_statistic_s + chunk.timing.reporting_s
+    )
 
     estimator = RealtimeIntensityEstimator()
     sample = estimator.process_sample(values[0])
