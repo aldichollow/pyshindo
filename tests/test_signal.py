@@ -5,6 +5,7 @@ import pytest
 
 from pyshindo.signal import (
     cosine_taper,
+    detect_clipping,
     detrend_acceleration,
     peak_ground_acceleration,
     remove_offset,
@@ -12,6 +13,7 @@ from pyshindo.signal import (
     time_axis,
     vector_resultant,
 )
+from pyshindo.synthetic import synthetic_three_component_motion
 from pyshindo.units import convert_acceleration
 from pyshindo.validation import sampling_diagnostics
 
@@ -105,3 +107,117 @@ def test_sampling_diagnostics_rejects_the_wrong_shape(timestamps: object) -> Non
 def test_sampling_diagnostics_rejects_non_finite_timestamps() -> None:
     with pytest.raises(ValueError, match="non-finite"):
         sampling_diagnostics([0.0, 0.01, float("nan"), 0.03])
+
+
+# --------------------------------------------------------------------------
+# detect_clipping
+# --------------------------------------------------------------------------
+
+
+def test_detect_clipping_finds_nothing_in_a_clean_synthetic_record() -> None:
+    acc = synthetic_three_component_motion(sampling_rate_hz=100.0, duration_s=20.0)
+    report = detect_clipping(acc)
+    assert not report.any_suspected
+    assert report.components_affected == ()
+    assert report.component_count == 3
+    assert report.sample_count == acc.shape[0]
+
+
+def test_detect_clipping_flags_saturation_at_a_known_range() -> None:
+    acc = synthetic_three_component_motion(sampling_rate_hz=100.0, duration_s=5.0)[:, :1]
+    acc[100:106, 0] = 2000.0  # pinned at a hypothetical +-2000 gal digitizer range
+    report = detect_clipping(acc, max_range_gal=2000.0)
+    assert report.any_suspected
+    interval = next(i for i in report.intervals if i.method == "known_range")
+    assert interval.component == 0
+    assert interval.start_sample == 100
+    assert interval.end_sample == 106
+    assert interval.value == pytest.approx(2000.0)
+
+
+def test_detect_clipping_known_range_respects_tolerance() -> None:
+    acc = np.full((50, 1), 1995.0)  # within 0.1% tolerance of 2000, but not exactly at it
+    report = detect_clipping(acc, max_range_gal=2000.0, range_tolerance=0.01)
+    assert any(i.method == "known_range" for i in report.intervals)
+
+    report_strict = detect_clipping(acc, max_range_gal=2000.0, range_tolerance=0.0001)
+    assert not any(i.method == "known_range" for i in report_strict.intervals)
+
+
+def test_detect_clipping_flags_a_repeated_value_near_the_extreme() -> None:
+    rng = np.random.default_rng(0)
+    acc = rng.normal(scale=5.0, size=(2000, 1))
+    acc[500:505, 0] = 900.0  # a saturated run, far above the rest of the record
+    report = detect_clipping(acc)
+    assert report.any_suspected
+    interval = next(i for i in report.intervals if i.method == "repeated_extreme")
+    assert interval.component == 0
+    assert interval.start_sample == 500
+    assert interval.end_sample == 505
+
+
+def test_detect_clipping_does_not_flag_a_repeated_quiet_noise_floor() -> None:
+    # A quiet pre-event segment that happens to repeat the same quantized value
+    # several times, far from the record's own peak, must not be flagged --
+    # only a repeat near the component's own extreme counts.
+    rng = np.random.default_rng(1)
+    acc = rng.normal(scale=2.0, size=(2000, 1))
+    acc[100:110, 0] = 0.05  # quiet, repeated, nowhere near the peak below
+    acc[1500, 0] = 300.0  # one large, isolated, legitimate sample -- the real peak
+    report = detect_clipping(acc)
+    assert not report.any_suspected
+
+
+def test_detect_clipping_requires_the_configured_run_length() -> None:
+    acc = np.zeros((100, 1))
+    acc[10:12, 0] = 500.0  # only two repeats
+    report = detect_clipping(acc, repeat_threshold=3)
+    assert not report.any_suspected
+    report_lower = detect_clipping(acc, repeat_threshold=2)
+    assert report_lower.any_suspected
+
+
+def test_detect_clipping_only_flags_the_affected_component() -> None:
+    acc = np.zeros((200, 3))
+    acc[:, 0] = np.random.default_rng(2).normal(scale=1.0, size=200)
+    acc[50:55, 1] = 800.0  # only component 1 saturates
+    acc[:, 2] = np.random.default_rng(3).normal(scale=1.0, size=200)
+    report = detect_clipping(acc)
+    assert report.components_affected == (1,)
+
+
+def test_detect_clipping_handles_a_record_shorter_than_repeat_threshold() -> None:
+    acc = np.array([[1.0], [1.0]])  # only 2 samples, default repeat_threshold=3
+    report = detect_clipping(acc)
+    assert not report.any_suspected
+
+
+def test_detect_clipping_handles_an_all_zero_component() -> None:
+    acc = np.zeros((50, 1))
+    report = detect_clipping(acc)
+    assert not report.any_suspected
+
+
+def test_detect_clipping_never_corrects_the_input() -> None:
+    acc = np.full((20, 1), 2000.0)
+    before = acc.copy()
+    detect_clipping(acc, max_range_gal=2000.0)
+    np.testing.assert_array_equal(acc, before)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"repeat_threshold": 1}, "repeat_threshold"),
+        ({"extreme_fraction": 0.0}, "extreme_fraction"),
+        ({"extreme_fraction": 1.5}, "extreme_fraction"),
+        ({"range_tolerance": -0.1}, "range_tolerance"),
+        ({"range_tolerance": 1.0}, "range_tolerance"),
+        ({"max_range_gal": -5.0}, "max_range_gal"),
+        ({"max_range_gal": 0.0}, "max_range_gal"),
+    ],
+)
+def test_detect_clipping_validates_its_parameters(kwargs: dict, match: str) -> None:
+    acc = np.zeros((10, 1))
+    with pytest.raises(ValueError, match=match):
+        detect_clipping(acc, **kwargs)

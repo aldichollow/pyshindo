@@ -2,6 +2,7 @@
 import numpy as np
 
 from pyshindo import (
+    SpectrumIntensityEstimator,
     calculate_spectrum_intensity,
     peak_ground_velocity,
     synthetic_three_component_motion,
@@ -67,5 +68,22 @@ default_grid = calculate_spectrum_intensity(acceleration_gal[:, :1], sampling_ra
 print(f"\nSI (NS) at 25 periods:  {coarse.si_cm_s[0]:.6f} cm/s")
 print(f"SI (NS) at 121 periods: {default_grid.si_cm_s[0]:.6f} cm/s (the default)")
 print(f"SI (NS) at 769 periods: {fine.si_cm_s[0]:.6f} cm/s")
+
+# %% Streaming: SI can only grow as more of the record arrives, the same
+# cumulative-maximum pattern examples/08_long_period.py shows for the
+# long-period class -- SI has no published real-time spec of its own either,
+# see SpectrumIntensityEstimator's docstring for why that distinction matters
+estimator = SpectrumIntensityEstimator(sampling_rate_hz)
+for start in range(0, acceleration_gal.shape[0], 500):
+    update = estimator.process(acceleration_gal[start : start + 500])
+    print(
+        f"  t={update.sample_count / sampling_rate_hz:5.1f} s  "
+        f"SI so far (NS, EW, UD) = {update.si_so_far_cm_s}"
+    )
+# The estimator steps the same recurrence the batch calculation's own naive
+# cross-check uses internally, so agreement is at floating-point rounding
+# level rather than bit-identical (the batch default runs an IIR filter per
+# period instead, which is faster and agrees to the same rounding level).
+np.testing.assert_allclose(estimator.si_cm_s, result.si_cm_s, rtol=1e-9)
 
 # %%

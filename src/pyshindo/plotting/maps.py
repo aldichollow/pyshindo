@@ -64,6 +64,8 @@ def _validate_coordinates(
         raise ValueError("latitudes_deg and longitudes_deg must be finite.")
     if np.any(np.abs(lat) > 90.0):
         raise ValueError("latitudes_deg must lie within [-90, 90].")
+    if np.any(np.abs(lon) > 180.0):
+        raise ValueError("longitudes_deg must lie within [-180, 180].")
     return lat, lon
 
 

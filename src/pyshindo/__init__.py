@@ -40,6 +40,11 @@ from .models import (
     RecursiveFilterDesign,
 )
 from .realtime import RealtimeIntensityEstimator, calculate_realtime_intensity, realtime_intensity
+from .response_spectrum import (
+    ResponseSpectrumResult,
+    ResponseSpectrumTiming,
+    calculate_response_spectrum,
+)
 from .scale import (
     INTENSITY_INTERVALS,
     IntensityScale,
@@ -52,8 +57,11 @@ from .scale import (
     report_intensity,
 )
 from .signal import (
+    ClippingInterval,
+    ClippingReport,
     component_peak_acceleration,
     cosine_taper,
+    detect_clipping,
     detrend_acceleration,
     peak_ground_acceleration,
     remove_offset,
@@ -62,8 +70,10 @@ from .signal import (
     vector_resultant,
 )
 from .spectrum_intensity import (
+    SpectrumIntensityEstimator,
     SpectrumIntensityResult,
     SpectrumIntensityTiming,
+    SpectrumIntensityUpdate,
     calculate_spectrum_intensity,
     default_periods_s,
 )
@@ -78,6 +88,8 @@ __all__ = [
     "STANDARD_GRAVITY_MPS2",
     "AccelerationUnit",
     "AmplitudeDurationCurve",
+    "ClippingInterval",
+    "ClippingReport",
     "__version__",
     "FilterStage",
     "FrequencyResponse",
@@ -94,14 +106,19 @@ __all__ = [
     "RealtimeIntensityResult",
     "RealtimeSample",
     "RecursiveFilterDesign",
+    "ResponseSpectrumResult",
+    "ResponseSpectrumTiming",
     "SamplingDiagnostics",
+    "SpectrumIntensityEstimator",
     "SpectrumIntensityResult",
     "SpectrumIntensityTiming",
+    "SpectrumIntensityUpdate",
     "acceleration_from_intensity",
     "amplitude_duration_curve",
     "apply_jma_filter_fft",
     "calculate_measured_intensity",
     "calculate_realtime_intensity",
+    "calculate_response_spectrum",
     "calculate_spectrum_intensity",
     "classify_intensity",
     "classify_intensity_array",
@@ -112,6 +129,7 @@ __all__ = [
     "cosine_taper",
     "default_periods_s",
     "design_realtime_filter",
+    "detect_clipping",
     "detrend_acceleration",
     "duration_sample_count",
     "duration_threshold",

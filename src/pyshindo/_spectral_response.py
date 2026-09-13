@@ -1,14 +1,17 @@
 """Single-degree-of-freedom elastic response, shared by every response-spectrum feature.
 
-This is the linear-acceleration-method SDOF solver behind both
+This is the linear-acceleration-method SDOF solver behind
 :mod:`pyshindo.long_period` (JMA's absolute velocity response, two horizontal
-components combined as a vector) and :mod:`pyshindo.spectrum_intensity`
-(Housner's relative velocity response, one value per component). Nothing here
-is specific to either: given a period, a damping ratio, and a sampling rate,
-it produces the coefficients of the published recurrence and the exact
-transfer function equivalent to it. The two features add their own
-acceleration filtering, ground-velocity handling, and component combination
-on top; see their own modules for that.
+components combined as a vector), :mod:`pyshindo.spectrum_intensity`
+(Housner's relative velocity response, one value per component), and
+:mod:`pyshindo.response_spectrum` (the general relative displacement,
+velocity, and pseudo-acceleration spectrum, with neither ground motion nor
+component combination applied). Nothing here is specific to any of them:
+given a period, a damping ratio, and a sampling rate, it produces the
+coefficients of the published recurrence and the exact transfer functions
+equivalent to it, for either state variable (velocity or displacement). Each
+feature adds its own acceleration filtering, ground-motion handling, and
+component combination on top; see their own modules for that.
 
 References
 ----------
@@ -171,6 +174,111 @@ def seed_relative_velocity(bank: OscillatorBank, acceleration: FloatArray) -> Fl
     return np.stack([np.broadcast_to(first, second.shape), second])
 
 
+def displacement_transfer_functions(bank: OscillatorBank) -> tuple[FloatArray, FloatArray]:
+    """Return one ``lfilter`` numerator and denominator per period, for relative displacement.
+
+    Same state-space-to-transfer-function conversion as :func:`transfer_functions`,
+    selecting the displacement element of the state vector (output ``C = [1, 0]``)
+    instead of velocity (``C = [0, 1]``), so the denominator -- which comes from
+    the state matrix alone, not the selected output -- is identical::
+
+        D(z)     b12 z^2 + (b11 - a22 b12 + a12 b22) z + (a12 b21 - a22 b11)
+        ---- = ---------------------------------------------------------------
+        U(z)          z^2 - (a11 + a22) z + (a11 a22 - a12 a21)
+
+    Verified against an independent step-by-step recurrence at about 1e-12
+    relative, the same level as :func:`transfer_functions`.
+    """
+    numerator = np.column_stack(
+        [
+            bank.b12,
+            bank.b11 - bank.a22 * bank.b12 + bank.a12 * bank.b22,
+            bank.a12 * bank.b21 - bank.a22 * bank.b11,
+        ]
+    )
+    denominator = np.column_stack(
+        [
+            np.ones_like(bank.a11),
+            -(bank.a11 + bank.a22),
+            bank.a11 * bank.a22 - bank.a12 * bank.a21,
+        ]
+    )
+    return numerator, denominator
+
+
+def seed_relative_displacement(bank: OscillatorBank, acceleration: FloatArray) -> FloatArray:
+    """Return the first two relative displacement samples, shaped ``(2, periods, components)``.
+
+    ``DIS(1) = 0`` by the published initialization, for every period.
+    ``DIS(2)`` follows from applying the recurrence once, using the same
+    ``VEL(1) = -A(1)*dt`` used to seed :func:`seed_relative_velocity`.
+    """
+    dt = 1.0 / bank.sampling_rate_hz
+    velocity_first = -acceleration[0] * dt
+    second = (
+        bank.a12[:, np.newaxis] * velocity_first
+        + bank.b11[:, np.newaxis] * acceleration[0]
+        + bank.b12[:, np.newaxis] * acceleration[1]
+    )
+    first = np.zeros_like(second)
+    return np.stack([first, second])
+
+
+def _run_transfer_function(
+    bank: OscillatorBank,
+    acceleration: FloatArray,
+    numerator: FloatArray,
+    denominator: FloatArray,
+    single_sample_response: FloatArray,
+    seed: FloatArray | None,
+    *,
+    collect: bool,
+) -> tuple[FloatArray, FloatArray | None]:
+    """Run one transfer function over every period, shared by the velocity and
+    displacement response functions -- they differ only in which numerator,
+    seed, and degenerate one-sample value they pass in.
+    """
+    samples = acceleration.shape[0]
+    components = acceleration.shape[1]
+    period_count = bank.period_count
+    peaks = np.zeros((period_count, components), dtype=np.float64)
+    series = (
+        np.empty((samples, period_count, components), dtype=np.float64) if collect else None
+    )
+    if samples == 0:
+        return peaks, series
+
+    response = np.empty((samples, components), dtype=np.float64)
+    for index in range(period_count):
+        if seed is None:
+            response[0] = single_sample_response
+        else:
+            response[:2] = seed[:, index, :]
+            if samples > 2:
+                state = np.column_stack(
+                    [
+                        scipy_signal.lfiltic(
+                            numerator[index],
+                            denominator[index],
+                            response[1::-1, component],
+                            acceleration[1::-1, component],
+                        )
+                        for component in range(components)
+                    ]
+                )
+                response[2:] = scipy_signal.lfilter(
+                    numerator[index],
+                    denominator[index],
+                    acceleration[2:],
+                    axis=0,
+                    zi=state,
+                )[0]
+        peaks[index] = np.max(np.abs(response), axis=0)
+        if series is not None:
+            series[:, index, :] = response
+    return peaks, series
+
+
 def relative_velocity_response(
     bank: OscillatorBank,
     acceleration: FloatArray,
@@ -192,45 +300,32 @@ def relative_velocity_response(
     the same technique.
     """
     samples = acceleration.shape[0]
-    components = acceleration.shape[1]
-    period_count = bank.period_count
-    peaks = np.zeros((period_count, components), dtype=np.float64)
-    series = (
-        np.empty((samples, period_count, components), dtype=np.float64) if collect else None
-    )
-    if samples == 0:
-        return peaks, series
-
     dt = 1.0 / bank.sampling_rate_hz
     seed = seed_relative_velocity(bank, acceleration) if samples > 1 else None
     numerator, denominator = transfer_functions(bank)
+    single_sample = -acceleration[0] * dt if samples > 0 else np.empty(acceleration.shape[1])
+    return _run_transfer_function(
+        bank, acceleration, numerator, denominator, single_sample, seed, collect=collect
+    )
 
-    velocity = np.empty((samples, components), dtype=np.float64)
-    for index in range(period_count):
-        if seed is None:
-            velocity[0] = -acceleration[0] * dt
-        else:
-            velocity[:2] = seed[:, index, :]
-            if samples > 2:
-                state = np.column_stack(
-                    [
-                        scipy_signal.lfiltic(
-                            numerator[index],
-                            denominator[index],
-                            velocity[1::-1, component],
-                            acceleration[1::-1, component],
-                        )
-                        for component in range(components)
-                    ]
-                )
-                velocity[2:] = scipy_signal.lfilter(
-                    numerator[index],
-                    denominator[index],
-                    acceleration[2:],
-                    axis=0,
-                    zi=state,
-                )[0]
-        peaks[index] = np.max(np.abs(velocity), axis=0)
-        if series is not None:
-            series[:, index, :] = velocity
-    return peaks, series
+
+def relative_displacement_response(
+    bank: OscillatorBank,
+    acceleration: FloatArray,
+    *,
+    collect: bool = False,
+) -> tuple[FloatArray, FloatArray | None]:
+    """Return the peak relative displacement response of every period and component.
+
+    Same contract as :func:`relative_velocity_response`, for displacement
+    instead of velocity: no ground motion added, no component combination,
+    ``peaks`` shaped ``(periods, components)``.
+    """
+    samples = acceleration.shape[0]
+    seed = seed_relative_displacement(bank, acceleration) if samples > 1 else None
+    numerator, denominator = displacement_transfer_functions(bank)
+    # DIS(1) = 0 by the published initialization, regardless of period.
+    single_sample = np.zeros(acceleration.shape[1] if samples > 0 else 0)
+    return _run_transfer_function(
+        bank, acceleration, numerator, denominator, single_sample, seed, collect=collect
+    )

@@ -31,7 +31,9 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Unit conversion, sampling diagnostics, PGA, preprocessing helpers, JMA text-record parsing, and optional Plotly figures.
 - Velocity by cumulative trapezoidal integration, and PGV -- with the baseline treatment left to the caller rather than applied silently.
 - The JMA long-period ground motion class (長周期地震動階級): the 20-second high-pass, a 32-oscillator bank over 1.6-7.8 s, the horizontal vector composite, the overall and per-band classes, and a streaming estimator. Every class matches JMA's own published values across 268 stations of two earthquakes; the response spectra themselves agree to about 1e-5, worst case, over the stations checked.
-- Housner's spectrum intensity (SI value), per component: the relative-velocity response spectrum averaged over the 0.1-2.5 s period band, sharing the same linear-acceleration-method oscillator solver as the long-period class but without its absolute-velocity or component-combination steps.
+- Housner's spectrum intensity (SI value), per component: the relative-velocity response spectrum averaged over the 0.1-2.5 s period band, sharing the same linear-acceleration-method oscillator solver as the long-period class but without its absolute-velocity or component-combination steps, plus a streaming estimator with the same cumulative-maximum behavior as the long-period class's.
+- A general elastic response spectrum (`calculate_response_spectrum`): relative displacement, relative velocity, and pseudo-acceleration for any damping ratio and period grid, sharing the same oscillator solver as the long-period class and SI value without either one's own conventions baked in.
+- `detect_clipping`: a diagnostic-only check for saturated samples, by a known digitizer range and/or a run of repeated values near a component's own peak. Never applied automatically.
 - Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
@@ -263,6 +265,7 @@ interactive window.
 | [`08_long_period.py`](examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
 | [`09_spectrum_intensity.py`](examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
 | [`10_station_map.py`](examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
+| [`11_response_spectrum.py`](examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it            |
 
 ## Development
 

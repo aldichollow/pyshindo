@@ -11,6 +11,7 @@ from pyshindo.spectrum_intensity import (
     INTEGRATION_WIDTH_S,
     LOWER_PERIOD_S,
     UPPER_PERIOD_S,
+    SpectrumIntensityEstimator,
     calculate_spectrum_intensity,
     default_periods_s,
 )
@@ -221,3 +222,124 @@ def test_default_grid_is_converged_relative_to_a_much_finer_grid() -> None:
     fine = calculate_spectrum_intensity(acc, RATE, unit="gal", periods_s=default_periods_s(769))
     relative_error = abs(coarse.si_cm_s[0] - fine.si_cm_s[0]) / fine.si_cm_s[0]
     assert relative_error < 1e-4
+
+
+# --------------------------------------------------------------------------
+# SpectrumIntensityEstimator
+# --------------------------------------------------------------------------
+
+STREAM_PERIODS = np.array([0.2, 0.5, 1.0, 1.7, 2.4])
+
+
+def test_chunked_processing_is_identical_to_one_shot_processing() -> None:
+    acc = record()[:, :2]
+    one_shot = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    one_shot.process(acc)
+
+    chunked = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    rng = np.random.default_rng(20260910)
+    position = 0
+    while position < acc.shape[0]:
+        size = int(rng.integers(1, 500))
+        chunked.process(acc[position : position + size])
+        position += size
+
+    # Bit-identical: chunking must not change the arithmetic at all.
+    np.testing.assert_array_equal(chunked.sv_cm_s, one_shot.sv_cm_s)
+    np.testing.assert_array_equal(chunked.si_cm_s, one_shot.si_cm_s)
+
+
+def test_sample_by_sample_streaming_is_identical_to_one_shot_processing() -> None:
+    acc = record(duration_s=6.0)[:, :2]
+    one_shot = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    one_shot.process(acc)
+
+    sampled = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    update = None
+    for sample in acc:
+        update = sampled.process_sample(sample)
+
+    assert update is not None
+    np.testing.assert_array_equal(sampled.sv_cm_s, one_shot.sv_cm_s)
+    assert update.sample_count == acc.shape[0]
+    np.testing.assert_array_equal(update.si_so_far_cm_s, one_shot.si_cm_s)
+
+
+def test_streaming_agrees_with_the_batch_calculation() -> None:
+    # The estimator steps the raw recurrence sample by sample (needed for a
+    # true streaming API); calculate_spectrum_intensity runs the fast lfilter
+    # path. Same equation, different arithmetic order -- like the "filter" vs
+    # "recurrence" solvers in pyshindo.long_period -- so agreement is at
+    # floating-point rounding level rather than bit-identical.
+    acc = record()[:, :2]
+    batch = calculate_spectrum_intensity(acc, RATE, unit="gal", periods_s=STREAM_PERIODS)
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    estimator.process(acc)
+    np.testing.assert_allclose(estimator.sv_cm_s, batch.sv_cm_s, rtol=1e-9)
+    np.testing.assert_allclose(estimator.si_cm_s, batch.si_cm_s, rtol=1e-9)
+
+
+def test_streaming_maximum_never_decreases() -> None:
+    acc = record()[:, :1]
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    previous = 0.0
+    for start in range(0, acc.shape[0], 500):
+        update = estimator.process(acc[start : start + 500])
+        current = float(update.si_so_far_cm_s[0])
+        assert current >= previous
+        previous = current
+
+
+def test_estimator_result_matches_the_batch_result() -> None:
+    acc = record()[:, :2]
+    batch = calculate_spectrum_intensity(acc, RATE, unit="gal", periods_s=STREAM_PERIODS)
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    estimator.process(acc)
+    streamed = estimator.result()
+    np.testing.assert_allclose(streamed.sv_cm_s, batch.sv_cm_s, rtol=1e-9)
+    np.testing.assert_allclose(streamed.si_cm_s, batch.si_cm_s, rtol=1e-9)
+    assert streamed.sample_count == batch.sample_count
+    assert streamed.component_count == batch.component_count
+    assert streamed.sv_time_series_cm_s is None
+
+
+def test_estimator_accepts_one_to_three_components() -> None:
+    acc = record()
+    for count in (1, 2, 3):
+        estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+        estimator.process(acc[:, :count])
+        assert estimator.component_count == count
+        assert estimator.si_cm_s.shape == (count,)
+
+
+def test_estimator_rejects_a_component_count_change_mid_stream() -> None:
+    acc = record()
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    estimator.process(acc[:, :2])
+    with pytest.raises(ValueError, match="components"):
+        estimator.process(acc[:, :3])
+
+
+def test_process_sample_rejects_the_wrong_number_of_components() -> None:
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    with pytest.raises(InvalidAccelerationError):
+        estimator.process_sample(np.zeros(4))
+
+
+def test_estimator_before_any_input_reports_empty_state() -> None:
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    assert estimator.sample_count == 0
+    assert estimator.component_count is None
+    assert estimator.si_cm_s.shape == (0,)
+    assert estimator.sv_cm_s.shape == (len(STREAM_PERIODS), 0)
+
+
+def test_estimator_periods_s_is_read_only() -> None:
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    with pytest.raises(ValueError, match="read-only"):
+        estimator.periods_s[0] = 99.0
+
+
+def test_estimator_default_damping_ratio_matches_the_batch_function() -> None:
+    estimator = SpectrumIntensityEstimator(RATE, periods_s=STREAM_PERIODS)
+    assert estimator.damping_ratio == DEFAULT_DAMPING_RATIO

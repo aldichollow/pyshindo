@@ -125,6 +125,11 @@ def test_out_of_range_latitude_is_rejected() -> None:
         continuous_value_map_figure([95.0], [139.7], [1.0], value_label="x")
 
 
+def test_out_of_range_longitude_is_rejected() -> None:
+    with pytest.raises(ValueError, match="longitudes_deg"):
+        continuous_value_map_figure([35.6], [185.0], [1.0], value_label="x")
+
+
 def test_non_finite_coordinates_are_rejected() -> None:
     with pytest.raises(ValueError, match="finite"):
         continuous_value_map_figure([float("nan")], [139.7], [1.0], value_label="x")

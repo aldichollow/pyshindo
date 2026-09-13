@@ -122,9 +122,13 @@ detrend_acceleration(acceleration, *, mode="linear") -> ndarray
 cosine_taper(acceleration, *, fraction=0.05) -> ndarray
 resample_acceleration(acceleration, original_rate_hz, target_rate_hz=100.0) -> ndarray
 sampling_diagnostics(timestamps_s) -> SamplingDiagnostics
+detect_clipping(acceleration, *, max_range_gal=None, range_tolerance=0.001,
+                repeat_threshold=3, extreme_fraction=0.9) -> ClippingReport
 ```
 
 前処理系(`remove_offset` / `detrend_acceleration` / `cosine_taper` / `resample_acceleration`)は計測震度の定義に暗黙には含まれないため、常に明示的に呼び出す必要があります。
+
+`detect_clipping`は診断専用です。値の補正・削除は一切行わず、他のどの計算関数からも自動的には呼ばれません。検知方式は2種類で、両方を独立に評価します: `max_range_gal`(既知のデジタイザのフルスケール、未指定ならこの方式は無効)付近に張り付いたサンプルと、`repeat_threshold`回以上連続する完全に同一の値のうち、その成分自身の最大振幅の`extreme_fraction`倍以上の区間にあるもの(静穏なノイズフロアでの量子化による偶然の一致を誤検知しないための制約)。実データ268観測点(`docs/validation.md`と同じ検証コーパス)で確認したところクリッピングはゼロでしたが、境界的な誤検知が2件あり、いずれも振幅0.5 gal未満の非常に静かな観測点で、公表波形が小数3桁に丸められていることによる滑らかなピーク付近での値の停滞が原因でした(クリッピングではありません)。詳細はdocstringを参照してください。
 
 ## 速度・PGV
 
@@ -175,6 +179,40 @@ SI値には気象庁の震度階級のような公式の離散階級は存在し
 この式・減衰比0.20・水平成分ごとの報告は、鳥取県道路橋梁設計マニュアル3-6「スペクトル強度SI値」(式3-11、大崎順彦による)に式番号付きで明記されています。実データでの確認: 同マニュアルの図3-18は2000年鳥取県西部地震のSI値を観測点ごとに示しており、対応するK-NET/KiK-net記録(米子TTR008、日野TTRH02地表センサー)を実際にダウンロードして`calculate_spectrum_intensity`にかけると、図の値と1%以内で一致します(米子NS 47.59 対 47.12、EW 66.05 対 65.44、日野NS 113.7 対 113 cm/s)。
 
 使用例は [`examples/09_spectrum_intensity.py`](../examples/09_spectrum_intensity.py) にあります。
+
+### ストリーミング版
+
+```python
+SpectrumIntensityEstimator(sampling_rate_hz=100.0, *, unit="gal",
+                            damping_ratio=0.20, periods_s=None)
+    .process(acceleration) -> SpectrumIntensityUpdate       # チャンク一括
+    .process_sample(acceleration) -> SpectrumIntensityUpdate  # 1サンプルずつ
+    .si_cm_s / .sv_cm_s   # ここまでの累積値
+    .result() -> SpectrumIntensityResult
+```
+
+`pyshindo.long_period.LongPeriodEstimator`と同じ「記録開始からの累積最大値」という挙動です(ローリングウィンドウではありません)。ただし、長周期地震動階級・SI値のどちらも気象庁が公表した公式のリアルタイム計算方法があるわけではなく、この累積最大値という解釈はどちらもこのパッケージ独自の設計判断である点に注意してください(公式のリアルタイム近似フィルタが存在する計測震度の`RealtimeIntensityEstimator`とはこの点が異なります)。バッチ計算(`calculate_spectrum_intensity`の既定ソルバー)とは演算順序が異なるため浮動小数点の丸め水準で一致し、ビット単位の一致ではありません。既定の121点グリッドは長周期地震動階級の32点の約3.8倍ですが、1サンプルあたりの処理コストは実測で約1.1倍にとどまります(周期方向の演算が既にNumPyでベクトル化されているため)。
+
+## 弾性応答スペクトル(Sd/Sv/PSA)
+
+```python
+calculate_response_spectrum(acceleration, sampling_rate_hz=100.0, *, unit="gal",
+                             damping_ratio, periods_s,
+                             component_axis=-1, retain_time_series=False)
+    -> ResponseSpectrumResult
+
+result.sd_cm    # 変位応答スペクトル [cm]、shape (周期数, 成分数)
+result.sv_cm_s   # 速度応答スペクトル [cm/s]
+result.psa_gal   # 擬似加速度応答スペクトル [gal] = omega^2 * sd_cm
+```
+
+長周期地震動階級・SI値の両方が内部で共有している1自由度系ソルバー(`pyshindo._spectral_response`)を、そのままの形で公開する汎用関数です。`damping_ratio`・`periods_s`にはどちらも既定値がありません -- 長周期地震動階級(減衰5%、公式32点グリッド)・SI値(減衰20%、0.1〜2.5秒)のどちらの慣行を既定にしても「汎用」という位置づけと矛盾するため、呼び出し側が必ず明示します。
+
+**相対応答のみ**です。地動速度・地動変位の加算、成分合成はいずれも行いません(この相対応答にJMA固有の処理を足して絶対応答にする部分は`long_period`側が担います)。絶対応答スペクトルが欲しい場合は、`retain_time_series=True`で得られる`sv_time_series_cm_s`に、既存の`integrate_to_velocity`(公開関数)で求めた地動速度をサンプルごとに足してから最大値を取ってください(和の最大値は最大値の和と一致しないため、`sv_cm_s`だけからは絶対応答を再構成できません)。`examples/11_response_spectrum.py`で、この手順が`pyshindo.long_period`自身のSvaと一致することを確認しています。
+
+擬似加速度(PSA = ω²×Sd)は絶対加速度応答の工学的近似で、減衰ゼロの極限でのみ厳密に一致します。真の絶対加速度応答(相対加速度+地動加速度)は、独自の伝達関数導出と一次資料での定義確認が必要なため実装していません。
+
+使用例は [`examples/11_response_spectrum.py`](../examples/11_response_spectrum.py) にあります。
 
 ## 単位変換
 

@@ -5,6 +5,7 @@ import numpy as np
 from pyshindo import (
     amplitude_duration_curve,
     calculate_measured_intensity,
+    detect_clipping,
     scale_acceleration_to_intensity,
     synthetic_three_component_motion,
     time_axis,
@@ -28,6 +29,12 @@ acceleration_gal, _ = scale_acceleration_to_intensity(
     sampling_rate_hz=sampling_rate_hz,
 )
 time_s = time_axis(acceleration_gal.shape[0], sampling_rate_hz)
+
+# %% Diagnostic only, before analysis: does anything look clipped? Nothing in
+# this package calls detect_clipping automatically -- run it yourself and
+# decide what to do with what it finds.
+clipping = detect_clipping(acceleration_gal, max_range_gal=2000.0)
+print(f"Suspected clipping: {clipping.any_suspected} ({len(clipping.intervals)} interval(s))")
 
 # %% Inspect the original acceleration
 input_figure = acceleration_figure(
