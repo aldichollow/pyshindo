@@ -31,7 +31,12 @@ def test_velocity_filter_preserves_shape_and_scales_with_the_input_unit() -> Non
     from_mps2 = apply_strong_motion_velocity_filter(acceleration_gal / 100.0, RATE, unit="m/s^2")
 
     assert from_gal.shape == acceleration_gal.shape
-    np.testing.assert_allclose(from_gal, from_mps2, rtol=1e-8)
+    # A generous tolerance: the gal and m/s^2 paths take different floating-point
+    # routes to the same recursive filter (a divide-then-multiply-back on every
+    # sample versus none), and that rounding difference compounds a little
+    # differently across platforms as the recursion runs -- observed up to
+    # about 2e-8 relative on Linux/Python 3.13 in CI, comfortably under this.
+    np.testing.assert_allclose(from_gal, from_mps2, rtol=1e-6)
 
 
 def test_displacement_filter_preserves_shape_and_scales_with_the_input_unit() -> None:
@@ -43,7 +48,12 @@ def test_displacement_filter_preserves_shape_and_scales_with_the_input_unit() ->
     )
 
     assert from_gal.shape == acceleration_gal.shape
-    np.testing.assert_allclose(from_gal, from_mps2, rtol=1e-8)
+    # A generous tolerance: the gal and m/s^2 paths take different floating-point
+    # routes to the same recursive filter (a divide-then-multiply-back on every
+    # sample versus none), and that rounding difference compounds a little
+    # differently across platforms as the recursion runs -- observed up to
+    # about 2e-8 relative on Linux/Python 3.13 in CI, comfortably under this.
+    np.testing.assert_allclose(from_gal, from_mps2, rtol=1e-6)
 
 
 def test_displacement_filter_settles_to_a_bounded_offset_response() -> None:
