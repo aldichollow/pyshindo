@@ -77,6 +77,10 @@ from .spectrum_intensity import (
     calculate_spectrum_intensity,
     default_periods_s,
 )
+from .strong_motion import (
+    apply_strong_motion_displacement_filter,
+    apply_strong_motion_velocity_filter,
+)
 from .synthetic import scale_acceleration_to_intensity, synthetic_three_component_motion
 from .units import STANDARD_GRAVITY_MPS2, AccelerationUnit, convert_acceleration, to_gal
 from .validation import SamplingDiagnostics, sampling_diagnostics
@@ -123,6 +127,8 @@ __all__ = [
     "acceleration_from_intensity",
     "amplitude_duration_curve",
     "apply_jma_filter_fft",
+    "apply_strong_motion_displacement_filter",
+    "apply_strong_motion_velocity_filter",
     "calculate_measured_intensity",
     "calculate_realtime_intensity",
     "calculate_response_spectrum",

@@ -142,11 +142,11 @@ component_peak_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal")
 peak_ground_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> float
 ```
 
-加速度を台形則で累積積分して速度を得ます。変位は同じ台形則でその速度をもう一度積分したものです(`integrate_to_displacement`は内部で`integrate_to_velocity`を呼んでいます)。入力単位に関わらず内部でgalへ変換するため、戻り値は速度が常にcm/s(カイン)、変位が常にcmです。
+加速度を台形則で累積積分して速度を得ます。変位は同じ台形則でその速度をもう一度積分したものです。入力単位に関わらず内部でgalへ変換するため、戻り値は速度が常にcm/s(カイン)、変位が常にcmです。
 
 ベースライン処理(オフセット除去・トレンド除去・ハイパスフィルタ)は一切自動適用しません。積分は「本物の長周期成分」と「ベースラインの誤差」を区別できないため、平均がゼロでない記録(上下動に重力成分が残っている場合を含む)を積分すると速度は直線的にドリフトします。これは演算が正しく働いた結果であって不具合ではありません。どの補正が適切かは記録と目的によって変わるので、`remove_offset`(事前区間を `baseline_samples` で指定)や `detrend_acceleration` を明示的に呼び出してください。強震観測の実務ではハイパスフィルタを用いることも一般的です。
 
-**変位はこのドリフトが二重に効きます。** 速度の直線的なドリフトをもう一度積分すると、変位は**二次関数的に**ドリフトします。実際に測定したところ、記録長を2倍にすると変位側のドリフトはおよそ4倍になりました(速度は2倍のまま)。PGVでは無視できる程度の基線誤差が、PGDでは支配的になり得るということです。強震動の実務では、加速度だけでなく中間の速度にも基線補正をかけることが一般的です。
+**変位はこのドリフトが二重に効きます。** 速度の直線的なドリフトをもう一度積分すると、変位は**二次関数的に**ドリフトします。実際に測定したところ、記録長を2倍にすると変位側のドリフトはおよそ4倍になりました(速度は2倍のまま)。PGVでは無視できる程度の基線誤差が、PGDでは支配的になり得るということです。
 
 `peak_ground_velocity`・`peak_ground_displacement`はどちらも渡された成分の合成値を返します(`peak_ground_acceleration`と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGV/PGDになります。どちらを採るかは解析側の選択なので、これらの関数側では固定していません。
 
@@ -160,6 +160,18 @@ pgv = peak_ground_velocity(filtered, sampling_rate_hz=100.0, unit="gal")
 ```
 
 この関係は一次資料が明記したものではなく、実証的に確認した経験則です。詳細と検証結果は [`docs/validation.md`](validation.md) を参照してください。
+
+**`max.csv`の最大変位は、そもそも積分では計算されていません。** 気象庁は「[速度波形・変位波形の求め方](https://www.jma.go.jp/jma/kishou/know/jishin/kyoshin/kaisetsu/calc_wave.html)」で、変位波形を加速度の二重積分ではなく、気象庁の機械式1倍強震計(固有周期6秒、減衰定数0.55)の振幅特性を再現する専用フィルタで直接算出すると明記しています。これは`pyshindo.strong_motion.apply_strong_motion_displacement_filter`として実装しており、`integrate_to_displacement`と違って積分を経由せず、加速度から直接変位を返します(100 Hzでのみ定義された係数のため、他のサンプリング周波数では`ValueError`になります):
+
+```python
+from pyshindo.strong_motion import apply_strong_motion_displacement_filter
+from pyshindo.signal import vector_resultant
+
+displacement = apply_strong_motion_displacement_filter(acceleration, sampling_rate_hz=100.0, unit="gal")
+pgd = float(np.max(vector_resultant(displacement)))
+```
+
+268観測点での相対誤差の中央値は約0.15%です。同じページは速度波形についても専用フィルタ(カットオフ5秒の3次バターワースハイパス、`apply_strong_motion_velocity_filter`として同モジュールに実装)を定義していますが、こちらは長周期地震動観測結果ページの最大速度の再現には向きません(`apply_ground_motion_high_pass`の方が良く一致します)。詳細は[`docs/validation.md`](validation.md)を参照してください。
 
 使用例は [`examples/06_peak_velocity.py`](../examples/06_peak_velocity.py) にあります。
 

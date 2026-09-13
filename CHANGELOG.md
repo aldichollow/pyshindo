@@ -3,6 +3,7 @@
 ## 0.2.2 - 2026-09-13
 
 - Added: peak ground displacement -- `integrate_to_displacement`, `component_peak_displacement`, `peak_ground_displacement`, alongside the existing velocity trio.
+- Added: `pyshindo.strong_motion` -- JMA's own published velocity/displacement waveform filters. `apply_strong_motion_displacement_filter` reproduces JMA's mechanical 1x strong-motion seismometer response directly from acceleration (no integration involved) and matches published peak displacement to ~0.15% median error, the recommended way to reproduce a long-period observation page's PGD.
 - Added: `calculate_response_spectrum` also returns pseudo-velocity (PSV); its displacement and velocity time series are now independent `retain_*` flags.
 - Added: `RealtimeChunkTiming.reporting_s` exposes the display-rounding cost.
 - Added: `marker_size` on the map figures.

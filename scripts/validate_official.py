@@ -6,11 +6,12 @@ derived from them. That makes an end-to-end check possible without any
 intermediate interpretation: read the same waveform, run the package, and
 compare against what JMA reported for that station.
 
-Five quantities are checked, from three published files per event:
+Six quantities are checked, from three published files per event:
 
-    data/max.csv                     seismic intensity class, peak acceleration
-                                     per component and three-component resultant,
-                                     peak velocity per component and resultant
+    data/max.csv                     seismic intensity class, peak acceleration,
+                                     peak velocity, and peak displacement, each
+                                     per component and as a three-component
+                                     resultant
     data/level.csv                   overall long-period class, and the class for
                                      each of the seven one-second period bands
     station/data/velsp/*_velsp.csv   the absolute velocity response spectrum
@@ -39,7 +40,13 @@ from typing import Final
 
 import numpy as np
 
-from pyshindo import calculate_measured_intensity, component_peak_velocity, peak_ground_velocity
+from pyshindo import (
+    apply_strong_motion_displacement_filter,
+    calculate_measured_intensity,
+    component_peak_velocity,
+    peak_ground_velocity,
+    vector_resultant,
+)
 from pyshindo.io import download_jma_record, parse_jma_bytes
 from pyshindo.long_period import apply_ground_motion_high_pass, calculate_long_period_class
 
@@ -58,6 +65,10 @@ PEAK_RELATIVE_TOLERANCE: Final = 0.01
 # moved. Peak acceleration needs no such floor: every station has one.
 SIGNIFICANT_PGV_CM_S: Final = 1.0
 
+# Same floor, applied to peak displacement, which is published in whole
+# centimeters to fewer significant digits than velocity.
+SIGNIFICANT_PGD_CM: Final = 0.1
+
 # max.csv writes a bare dash when no intensity was determined for a station.
 NO_VALUE: Final = "-"
 
@@ -65,6 +76,7 @@ NO_VALUE: Final = "-"
 MAX_CODE, MAX_NAME, MAX_INTENSITY = 0, 1, 4
 MAX_PGA: Final = slice(5, 9)
 MAX_PGV: Final = slice(9, 13)
+MAX_PGD: Final = slice(13, 17)
 LEVEL_CODE, LEVEL_CLASS = 0, 5
 LEVEL_BANDS: Final = slice(6, 13)
 
@@ -90,6 +102,8 @@ class StationComparison:
     official_pga: np.ndarray
     pgv: np.ndarray
     official_pgv: np.ndarray
+    pgd: np.ndarray
+    official_pgd: np.ndarray
     long_period_class: str
     official_long_period_class: str
     bands: tuple[str, ...]
@@ -131,6 +145,23 @@ class StationComparison:
     def pgv_agrees(self) -> bool:
         """Return whether every peak velocity above the noise floor is within tolerance."""
         error = self.pgv_relative_error
+        return bool(error.size == 0 or np.all(error <= PEAK_RELATIVE_TOLERANCE))
+
+    @property
+    def pgd_relative_error(self) -> np.ndarray:
+        """Return the relative difference in peak displacement, over the moving components."""
+        significant = self.official_pgd >= SIGNIFICANT_PGD_CM
+        if not np.any(significant):
+            return np.empty(0)
+        return (
+            np.abs(self.pgd - self.official_pgd)[significant]
+            / self.official_pgd[significant]
+        )
+
+    @property
+    def pgd_agrees(self) -> bool:
+        """Return whether every peak displacement above the noise floor is within tolerance."""
+        error = self.pgd_relative_error
         return bool(error.size == 0 or np.all(error <= PEAK_RELATIVE_TOLERANCE))
 
     @property
@@ -202,6 +233,7 @@ class OfficialValues:
     intensity_class: str
     pga: np.ndarray
     pgv: np.ndarray
+    pgd: np.ndarray
     long_period_class: str = ""
     bands: tuple[str, ...] = ()
 
@@ -219,13 +251,15 @@ def load_official(maximum_path: Path, level_path: Path) -> dict[str, OfficialVal
     for row in _read_rows(maximum_path):
         pga = _floats(row[MAX_PGA])
         pgv = _floats(row[MAX_PGV])
-        if pga is None or pgv is None:
+        pgd = _floats(row[MAX_PGD])
+        if pga is None or pgv is None or pgd is None:
             continue
         published[row[MAX_CODE]] = OfficialValues(
             name=row[MAX_NAME],
             intensity_class=row[MAX_INTENSITY],
             pga=pga,
             pgv=pgv,
+            pgd=pgd,
         )
     complete: dict[str, OfficialValues] = {}
     for row in _read_rows(level_path):
@@ -261,6 +295,12 @@ def compare_stations(
         # see docs/validation.md -- but matches closely once the same 20-second
         # high-pass used for the long-period class is applied first.
         filtered_for_velocity = apply_ground_motion_high_pass(acceleration, rate, unit="gal")
+        # Peak displacement is not a (filtered) double integration at all: JMA's
+        # own published derivation method for displacement waveforms emulates its
+        # mechanical 1x strong-motion seismometer's response directly from
+        # acceleration -- see docs/validation.md and
+        # pyshindo.strong_motion.apply_strong_motion_displacement_filter.
+        displacement = apply_strong_motion_displacement_filter(acceleration, rate, unit="gal")
         yield StationComparison(
             code=code,
             name=entry.name,
@@ -274,6 +314,11 @@ def compare_stations(
                 peak_ground_velocity(filtered_for_velocity, rate, unit="gal"),
             ),
             official_pgv=entry.pgv,
+            pgd=np.append(
+                np.max(np.abs(displacement), axis=0),
+                np.max(vector_resultant(displacement)),
+            ),
+            official_pgd=entry.pgd,
             long_period_class=long_period.long_period_class.value,
             official_long_period_class=entry.long_period_class,
             bands=tuple(band.long_period_class.value for band in long_period.bands),
@@ -320,6 +365,8 @@ def report(comparisons: list[StationComparison], spectra: list[SpectrumCompariso
     long_period_ok = sum(c.long_period_agrees for c in comparisons)
     pgv_ok = sum(c.pgv_agrees for c in comparisons)
     pgv_error = np.concatenate([c.pgv_relative_error for c in comparisons]) * 100.0
+    pgd_ok = sum(c.pgd_agrees for c in comparisons)
+    pgd_error = np.concatenate([c.pgd_relative_error for c in comparisons]) * 100.0
 
     lines.append(f"Stations compared: {total}\n")
     lines.append("| Quantity | Source | Agreement |")
@@ -347,6 +394,12 @@ def report(comparisons: list[StationComparison], spectra: list[SpectrumCompariso
         f"| Peak velocity, components at or above {SIGNIFICANT_PGV_CM_S:.0f} cm/s "
         f"(20-second high-pass applied first) | max.csv | "
         f"median {np.median(pgv_error):.1e} percent, {pgv_ok}/{total} stations within "
+        f"{PEAK_RELATIVE_TOLERANCE * 100:.0f} percent |"
+    )
+    lines.append(
+        f"| Peak displacement, components at or above {SIGNIFICANT_PGD_CM:.1f} cm "
+        f"(mechanical-seismometer filter) | max.csv | "
+        f"median {np.median(pgd_error):.1e} percent, {pgd_ok}/{total} stations within "
         f"{PEAK_RELATIVE_TOLERANCE * 100:.0f} percent |"
     )
 

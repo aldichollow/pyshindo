@@ -17,6 +17,8 @@ from pyshindo import (
 )
 from pyshindo.long_period import apply_ground_motion_high_pass
 from pyshindo.plotting import acceleration_figure
+from pyshindo.signal import vector_resultant
+from pyshindo.strong_motion import apply_strong_motion_displacement_filter
 
 # %% Generate a record and add a small instrument offset
 sampling_rate_hz = 100.0
@@ -63,18 +65,16 @@ print(f"Observed final velocity:                {np.max(np.abs(raw_velocity[-1])
 print(f"Expected displacement drift after {time_s[-1]:.0f} s: {expected_displacement_drift:.3f} cm")
 print(f"Observed final displacement:            {np.max(np.abs(raw_displacement[-1])):.3f} cm")
 
-# %% Compare baseline treatments
+# %% Compare baseline treatments for the generic double integration
 # apply_ground_motion_high_pass is the 20-second high-pass the long-period
 # ground motion class uses, generalized to any component count. It is a
 # specific published filter, not a general-purpose recommendation -- but it
 # also happens to reproduce JMA's own published peak velocity for a
 # long-period observation record to about 0.01 percent, where the other
-# treatments here do not get closer than a percent or two. See
-# docs/validation.md for that finding, verified against 268 real stations.
-# That finding is about velocity specifically: below, the same filter's PGD
-# is visibly worse than a plain remove_offset -- a 20-second corner still
-# passes some very-long-period content through, and a second integration
-# amplifies low frequencies far more than a first one does.
+# treatments here do not get closer than a percent or two (see
+# docs/validation.md). None of these treatments get PGD nearly that close,
+# because double integration is not how JMA derives displacement at all --
+# see the next cell.
 for label, prepared in (
     ("raw (no correction)", drifting_gal),
     ("remove_offset", remove_offset(drifting_gal)),
@@ -87,6 +87,20 @@ for label, prepared in (
     pgv = peak_ground_velocity(prepared, sampling_rate_hz)
     pgd = peak_ground_displacement(prepared, sampling_rate_hz)
     print(f"{label:29s} PGV = {pgv:7.3f} cm/s   PGD = {pgd:7.3f} cm")
+
+# %% JMA's own published displacement is not a double integration at all: it
+# is a filter reproducing the amplitude response of its mechanical 1x
+# strong-motion seismometer (natural period 6 s, damping 0.55), applied
+# directly to acceleration. That is a bounded resonant response, not an
+# accumulator, so it settles to a finite value under a sustained offset
+# instead of drifting without bound -- no remove_offset/detrend_acceleration
+# is needed first. Against a real 268-station corpus this reproduces JMA's
+# published peak displacement to a median relative error of about 0.15
+# percent, roughly two orders of magnitude closer than any treatment above
+# (see docs/validation.md).
+jma_displacement = apply_strong_motion_displacement_filter(drifting_gal, sampling_rate_hz)
+pgd_jma_filter = float(np.max(vector_resultant(jma_displacement)))
+print(f"\nPGD via apply_strong_motion_displacement_filter: {pgd_jma_filter:7.3f} cm")
 
 # %% Per-component peaks, in the same shape as component_peak_acceleration
 peaks = component_peak_velocity(remove_offset(drifting_gal), sampling_rate_hz)

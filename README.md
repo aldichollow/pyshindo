@@ -6,7 +6,7 @@
 
 `pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
 
-計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位。いずれも気象庁が定義・公表している量です)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
 
 詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
 
@@ -152,6 +152,16 @@ for the long-period class is applied to the acceleration first
 (`pyshindo.long_period.apply_ground_motion_high_pass`). See
 [`docs/validation.md`](docs/validation.md) for the finding and
 [`docs/api.md`](docs/api.md) for the recipe.
+
+The same `max.csv`'s published peak *displacement* is not a double integration
+at all -- JMA derives it by filtering acceleration through a filter
+reproducing the amplitude response of its mechanical 1x strong-motion
+seismometer (natural period 6 s, damping 0.55), which is published in
+[速度波形・変位波形の求め方](https://www.jma.go.jp/jma/kishou/know/jishin/kyoshin/kaisetsu/calc_wave.html).
+`pyshindo.strong_motion.apply_strong_motion_displacement_filter` implements
+this directly from acceleration (no separate integration step) and reproduces
+the published displacement to a median relative error of about 0.15 percent
+across the same 268 stations. See [`docs/validation.md`](docs/validation.md).
 
 ## Long-period ground motion class
 

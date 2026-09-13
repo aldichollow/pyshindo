@@ -134,10 +134,12 @@ def integrate_to_displacement(
 
     No baseline correction is applied. :func:`~pyshindo.signal.remove_offset`
     and :func:`~pyshindo.signal.detrend_acceleration` are the same starting
-    points :func:`integrate_to_velocity` documents; published strong-motion
-    practice for displacement commonly corrects the intermediate velocity as
-    well as the acceleration, not the acceleration alone, since either stage
-    can introduce its own residual drift.
+    points :func:`integrate_to_velocity` documents.
+
+    JMA's own published displacement is not this: it is not an integration
+    at all, but a filter reproducing the response of a specific instrument.
+    See :func:`pyshindo.strong_motion.apply_strong_motion_displacement_filter`
+    if matching that published value is the goal.
     """
     velocity = integrate_to_velocity(
         acceleration,
