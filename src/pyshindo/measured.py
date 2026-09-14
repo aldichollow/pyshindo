@@ -11,7 +11,7 @@ import numpy as np
 from .duration import DurationSamplePolicy, duration_sample_count, duration_threshold
 from .filters.jma import apply_jma_filter_fft
 from .models import MeasuredIntensityResult, MeasuredIntensityTiming
-from .scale import classify_intensity, intensity_from_acceleration, report_intensity
+from .scale import classify_intensity, intensity_from_threshold_acceleration, report_intensity
 from .signal import component_peak_acceleration, peak_ground_acceleration, vector_resultant
 from .units import AccelerationUnit, ArrayLike, to_gal
 from .validation import as_acceleration_array, validate_sampling_rate
@@ -67,7 +67,7 @@ def calculate_measured_intensity(
     rate = validate_sampling_rate(
         sampling_rate_hz,
         warn_nonstandard=warn_nonstandard_rate,
-        stacklevel=2,
+        stacklevel=3,
     )
     parsed_unit = AccelerationUnit.parse(unit)
     values = as_acceleration_array(
@@ -76,10 +76,15 @@ def calculate_measured_intensity(
         allow_fewer_components=allow_fewer_components,
     )
     values_gal = to_gal(values, parsed_unit, copy=False)
-    samples = duration_sample_count(duration_s, rate, policy=duration_policy)
+    samples = duration_sample_count(
+        duration_s, rate, policy=duration_policy, warn_stacklevel=3
+    )
 
     filter_started = time.perf_counter()
-    filtered, frequency, response = apply_jma_filter_fft(values_gal, rate, workers=workers)
+    fft_result = apply_jma_filter_fft(values_gal, rate, workers=workers)
+    filtered = fft_result.filtered_acceleration_gal
+    frequency = fft_result.frequency_hz
+    response = fft_result.response
     filter_elapsed = time.perf_counter() - filter_started
 
     threshold_started = time.perf_counter()
@@ -87,7 +92,7 @@ def calculate_measured_intensity(
     threshold = duration_threshold(resultant, samples)
     threshold_elapsed = time.perf_counter() - threshold_started
 
-    raw = intensity_from_acceleration(threshold)
+    raw = intensity_from_threshold_acceleration(threshold)
     reported = report_intensity(raw)
     scale = classify_intensity(reported)
     reference_conditions_met = (
@@ -135,6 +140,11 @@ def measured_intensity(
     **kwargs: Any,
 ) -> float:
     """Return only the scalar instrumental intensity for a complete record.
+
+    ``reported`` selects the same two quantities the result dataclasses
+    separate as ``intensity`` and ``intensity_raw``: the official one-decimal
+    treatment, or the unrounded value. :func:`~pyshindo.realtime_intensity`
+    takes the same keyword with the same default.
 
     Use :func:`calculate_measured_intensity` when filtered waveforms, threshold
     acceleration, PGA, or other diagnostics are needed.

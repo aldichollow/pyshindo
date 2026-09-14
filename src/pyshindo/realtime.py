@@ -44,9 +44,10 @@ from .models import (
     RecursiveFilterDesign,
 )
 from .scale import (
+    IntensityScale,
     classify_intensity,
-    intensity_from_acceleration,
-    intensity_series_from_acceleration,
+    intensity_from_threshold_acceleration,
+    intensity_series_from_threshold_acceleration,
     report_intensity,
     report_intensity_array,
 )
@@ -71,6 +72,20 @@ class RealtimeIntensityEstimator:
     avoiding a SciPy call and most temporary arrays. This is useful for callback-
     driven acquisition. The object is stateful and is not safe for concurrent
     calls; use one estimator per independent stream.
+
+    Unlike :class:`pyshindo.long_period.LongPeriodEstimator` and
+    :class:`~pyshindo.SpectrumIntensityEstimator`, this class has no
+    ``result()`` method. Those two summarize a record as per-period maxima --
+    a fixed-size answer their streaming state already holds in full -- whereas
+    :class:`~pyshindo.RealtimeIntensityResult` is a sample-aligned time series
+    over the whole record. Returning one would mean retaining every sample
+    processed, defeating the bounded-memory property that makes this class
+    usable on an indefinite live stream. Each :meth:`process` call returns the
+    :class:`~pyshindo.RealtimeChunk` for its own samples, to keep or discard as
+    the caller chooses; the running maxima stay available through
+    :attr:`approximate_intensity_raw`, :attr:`approximate_intensity`, and
+    :attr:`approximate_scale`. Use :func:`~pyshindo.calculate_realtime_intensity`
+    when the complete record is in memory anyway.
     """
 
     def __init__(
@@ -90,30 +105,32 @@ class RealtimeIntensityEstimator:
         allow_fewer_components: bool = False,
         warn_nonstandard_rate: bool = True,
     ) -> None:
-        self.sampling_rate_hz = validate_sampling_rate(
+        self._sampling_rate_hz = validate_sampling_rate(
             sampling_rate_hz,
             warn_nonstandard=warn_nonstandard_rate,
-            stacklevel=2,
+            stacklevel=3,
         )
-        self.input_unit = AccelerationUnit.parse(unit)
-        self.component_axis = component_axis
-        self.allow_fewer_components = allow_fewer_components
-        self.duration_samples = duration_sample_count(
+        self._input_unit = AccelerationUnit.parse(unit)
+        self._component_axis = component_axis
+        self._allow_fewer_components = allow_fewer_components
+        self._duration_samples = duration_sample_count(
             duration_s,
-            self.sampling_rate_hz,
+            self._sampling_rate_hz,
             policy=duration_policy,
+            warn_stacklevel=3,
         )
-        self.window_samples = duration_sample_count(
+        self._window_samples = duration_sample_count(
             window_s,
-            self.sampling_rate_hz,
+            self._sampling_rate_hz,
             policy=duration_policy,
+            warn_stacklevel=3,
         )
-        if self.window_samples < self.duration_samples:
+        if self._window_samples < self._duration_samples:
             raise ValueError("window_s must contain at least duration_s samples.")
 
         if filter_design is None:
-            self.filter_design = design_realtime_filter(
-                self.sampling_rate_hz,
+            self._filter_design = design_realtime_filter(
+                self._sampling_rate_hz,
                 filter_name=filter_name,
                 parameters=parameters,
                 lowrate_gamma_policy=lowrate_gamma_policy,
@@ -122,7 +139,7 @@ class RealtimeIntensityEstimator:
         else:
             if not math.isclose(
                 filter_design.sampling_rate_hz,
-                self.sampling_rate_hz,
+                self._sampling_rate_hz,
                 rel_tol=0.0,
                 abs_tol=1e-12,
             ):
@@ -131,9 +148,9 @@ class RealtimeIntensityEstimator:
                 )
             if not filter_design.stable:
                 raise ValueError("filter_design must be stable.")
-            self.filter_design = filter_design
+            self._filter_design = filter_design
 
-        highest_frequency = max(self.filter_design.characteristic_frequencies_hz)
+        highest_frequency = max(self._filter_design.characteristic_frequencies_hz)
         if self.filter_design.nyquist_hz <= highest_frequency:
             warnings.warn(
                 "The Nyquist frequency is not above every characteristic frequency in the "
@@ -163,6 +180,47 @@ class RealtimeIntensityEstimator:
             (row[0], row[1], row[2], row[4], row[5]) for row in self._sos.tolist()
         )
 
+    # The configuration below is read-only. The filter design, the rolling
+    # window length, and the duration sample count are all derived from the
+    # sampling rate at construction, so letting any of them be reassigned
+    # mid-stream would silently desync them from each other. Build a new
+    # estimator to change the configuration.
+
+    @property
+    def sampling_rate_hz(self) -> float:
+        """Return the configured sampling rate."""
+        return self._sampling_rate_hz
+
+    @property
+    def input_unit(self) -> AccelerationUnit:
+        """Return the unit incoming acceleration is interpreted as."""
+        return self._input_unit
+
+    @property
+    def component_axis(self) -> int:
+        """Return the axis incoming chunks carry their components on."""
+        return self._component_axis
+
+    @property
+    def allow_fewer_components(self) -> bool:
+        """Return whether a one- or two-component stream is accepted."""
+        return self._allow_fewer_components
+
+    @property
+    def duration_samples(self) -> int:
+        """Return the cumulative-exceedance sample count (0.3 s by default)."""
+        return self._duration_samples
+
+    @property
+    def window_samples(self) -> int:
+        """Return the rolling window length in samples (60 s by default)."""
+        return self._window_samples
+
+    @property
+    def filter_design(self) -> RecursiveFilterDesign:
+        """Return the recursive filter design in use."""
+        return self._filter_design
+
     @property
     def sample_count(self) -> int:
         """Return the total number of processed samples."""
@@ -187,6 +245,19 @@ class RealtimeIntensityEstimator:
     def approximate_intensity(self) -> float:
         """Return the reported one-decimal maximum intensity observed since reset."""
         return report_intensity(self.approximate_intensity_raw)
+
+    @property
+    def approximate_scale(self) -> IntensityScale | None:
+        """Return the class of the maximum intensity so far, or ``None`` before any.
+
+        The streaming counterpart of
+        :attr:`~pyshindo.RealtimeIntensityResult.approximate_scale`, and the
+        same running-classification role
+        :attr:`pyshindo.long_period.LongPeriodEstimator.long_period_class`
+        plays for the long-period class.
+        """
+        approximate = self.approximate_intensity
+        return None if np.isnan(approximate) else classify_intensity(approximate)
 
     @property
     def filter_state(self) -> np.ndarray | None:
@@ -270,7 +341,7 @@ class RealtimeIntensityEstimator:
         order_statistic_elapsed = time.perf_counter() - order_statistic_started
 
         reporting_started = time.perf_counter()
-        intensity_raw = intensity_series_from_acceleration(thresholds)
+        intensity_raw = intensity_series_from_threshold_acceleration(thresholds)
         intensity = report_intensity_array(intensity_raw)
         valid = ~np.isnan(intensity_raw)
         record_max = np.full(intensity_raw.shape, np.nan, dtype=np.float64)
@@ -387,7 +458,7 @@ class RealtimeIntensityEstimator:
             scale = None
             record_max = None
         else:
-            intensity_raw = intensity_from_acceleration(threshold)
+            intensity_raw = intensity_from_threshold_acceleration(threshold)
             intensity = report_intensity(intensity_raw)
             scale = classify_intensity(intensity)
             record_max = self._update_record_max(intensity_raw)
@@ -485,10 +556,19 @@ def realtime_intensity(
     sampling_rate_hz: float = 100.0,
     *,
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
-    reported: bool = False,
+    reported: bool = True,
     **kwargs: Any,
 ) -> FloatArray:
-    """Return only the sample-aligned real-time intensity series."""
+    """Return only the sample-aligned real-time intensity series.
+
+    ``reported`` selects the same two quantities the result dataclasses
+    separate as ``intensity`` and ``intensity_raw``: the official one-decimal
+    treatment, or the unrounded value. It defaults to ``True`` here for the
+    same reason it does in :func:`~pyshindo.measured_intensity` -- the two
+    convenience functions must not answer the same question differently.
+    Pass ``reported=False`` for the unrounded series, which is usually what
+    a plot or a further calculation wants.
+    """
     result = calculate_realtime_intensity(
         acceleration,
         sampling_rate_hz,

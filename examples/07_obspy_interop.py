@@ -50,7 +50,7 @@ record = from_obspy_stream(stream, unit="gal")
 
 print(f"components:    {record.metadata.component_names}")
 print(f"channels:      {record.metadata.channel_codes}")
-print(f"station:       {record.metadata.network}.{record.metadata.station}")
+print(f"station:       {record.metadata.network}.{record.metadata.station_code}")
 print(f"sampling rate: {record.metadata.sampling_rate_hz} Hz")
 print(f"shape:         {record.acceleration.shape}, duration {record.duration_s:.1f} s")
 

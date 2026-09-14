@@ -56,6 +56,21 @@ def test_batch_result_reports_maximum() -> None:
     assert result.window_samples == 6000
 
 
+def test_estimator_approximate_scale_tracks_the_batch_result() -> None:
+    # The streaming classification must agree with what the batch function
+    # reports for the same record, and must be None before the rolling window
+    # has produced any threshold at all.
+    estimator = RealtimeIntensityEstimator()
+    assert estimator.approximate_scale is None
+
+    values = _record()
+    estimator.process(values)
+    batch = calculate_realtime_intensity(values)
+
+    assert estimator.approximate_scale is not None
+    assert estimator.approximate_scale == batch.approximate_scale
+
+
 def test_nonstandard_stable_rate_warns_but_calculates() -> None:
     values = np.zeros((800, 3))
     with warnings.catch_warnings(record=True) as captured:

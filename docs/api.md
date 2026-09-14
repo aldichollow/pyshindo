@@ -45,15 +45,19 @@ RealtimeIntensityEstimator(sampling_rate_hz=100.0, *, unit="gal",
     .process_sample(acceleration) -> RealtimeSample  # 1サンプルずつ
     .reset() -> None
     .approximate_intensity_raw / .approximate_intensity  # 記録内の最大値
+    .approximate_scale -> IntensityScale | None          # 上記の階級(入力前はNone)
     .current_threshold_acceleration_gal
     .filter_state
 
 calculate_realtime_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal",
                               filter_name=RealtimeFilter.AUTO) -> RealtimeIntensityResult
-realtime_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal") -> ndarray
+realtime_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal",
+                    reported=True) -> ndarray
 ```
 
 `process()` と `process_sample()` は同一インスタンス上で自由に混在できます。チャンクの分割位置に結果は依存しません。`RealtimeChunk.timing` / `RealtimeSample.elapsed_s` に実測所要時間が入ります。
+
+`LongPeriodEstimator`・`SpectrumIntensityEstimator`と違い、このクラスには`result()`がありません。あの2つがまとめるのは周期ごとの最大値という固定長の要約で、ストリーミング状態がそのまま完全な答えを保持しています。一方`RealtimeIntensityResult`は記録全長にわたるサンプル単位の時系列なので、`result()`を用意すると処理済みの全サンプルを保持することになり、無限に続くライブ入力を一定メモリで扱えるという本クラスの性質が失われます。各`process()`が返す`RealtimeChunk`をどう保持・破棄するかは呼び出し側の選択です。記録全体が最初からメモリ上にあるなら`calculate_realtime_intensity`を使ってください。
 
 `RealtimeFilter`: `AUTO`(既定、80 Hz以上でkunugi2012・80 Hz未満でjp7681907-lowrateへ自動切替) / `KUNUGI_2008` / `KUNUGI_2012` / `JP7681907_LOWRATE`。
 
@@ -78,7 +82,7 @@ filter_stage_response(design, stage, frequency_hz=None) -> FrequencyResponse  # 
 jma_filter_response(frequency_hz) -> ndarray          # FFT参照フィルタの振幅応答
 jma_filter_components(frequency_hz) -> JMAFilterComponents  # 周期効果/ハイカット/ローカット別
 kunugi_2012_analog_amplitude(frequency_hz) -> ndarray  # 2012フィルタの連続時間近似
-published_lowrate_gamma_set(sampling_rate_hz, *, policy=...) -> LowRateGammaSet
+published_lowrate_gamma_set(sampling_rate_hz, *, lowrate_gamma_policy=...) -> LowRateGammaSet
 lowrate_stability_lower_bounds(sampling_rate_hz) -> tuple[float, ...]
 lowrate_gamma_stability_margins(sampling_rate_hz, gammas) -> tuple[float, ...]
 ```
@@ -90,8 +94,8 @@ lowrate_gamma_stability_margins(sampling_rate_hz, gammas) -> tuple[float, ...]
 ## 震度値と震度階級
 
 ```python
-intensity_from_acceleration(threshold_gal) -> float          # a0 -> 連続値
-acceleration_from_intensity(intensity) -> float              # 逆変換
+intensity_from_threshold_acceleration(threshold_gal) -> float  # a0 -> 連続値
+threshold_acceleration_from_intensity(intensity) -> float      # 逆変換
 report_intensity(value) -> float                              # 気象庁の十進丸め処理
 classify_intensity(value) -> IntensityScale                   # 0〜7 / 5弱〜6強
 classify_intensity_array(values) -> ndarray[str]               # classify_intensityの配列版
@@ -99,6 +103,8 @@ intensity_interval(scale) -> tuple[float, float]                # 階級の下�
 intensity_label(value, *, language="ja") -> str                # "震度5弱" 等
 INTENSITY_INTERVALS: dict[IntensityScale, tuple[float, float]]
 ```
+
+`intensity_from_threshold_acceleration`が受け取るのは、0.3秒継続の判定で選ばれた**閾値加速度1個**であって加速度波形ではありません。記録全体から計測震度を求めたい場合は`measured_intensity`(または`calculate_measured_intensity`)を使ってください。
 
 ## 継続時間・順序統計
 
@@ -114,8 +120,8 @@ amplitude_duration_curve(amplitude, sampling_rate_hz) -> AmplitudeDurationCurve
 
 ```python
 vector_resultant(acceleration) -> ndarray             # 3成分合成
-component_peak_acceleration(acceleration) -> ndarray   # 成分別PGA
-peak_ground_acceleration(acceleration) -> float        # 合成PGA
+component_peak_acceleration(acceleration, *, unit="gal") -> ndarray   # 成分別PGA(常にgal)
+peak_ground_acceleration(acceleration, *, unit="gal") -> float        # 合成PGA(常にgal)
 time_axis(sample_count, sampling_rate_hz) -> ndarray
 remove_offset(acceleration, *, baseline_samples=None) -> ndarray
 detrend_acceleration(acceleration, *, mode="linear") -> ndarray
@@ -148,7 +154,7 @@ peak_ground_displacement(acceleration, sampling_rate_hz=100.0, *, unit="gal") ->
 
 **変位はこのドリフトが二重に効きます。** 速度の直線的なドリフトをもう一度積分すると、変位は**二次関数的に**ドリフトします。実際に測定したところ、記録長を2倍にすると変位側のドリフトはおよそ4倍になりました(速度は2倍のまま)。PGVでは無視できる程度の基線誤差が、PGDでは支配的になり得るということです。
 
-`peak_ground_velocity`・`peak_ground_displacement`はどちらも渡された成分の合成値を返します(`peak_ground_acceleration`と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGV/PGDになります。どちらを採るかは解析側の選択なので、これらの関数側では固定していません。
+PGA・PGV・PGDはいずれも入力単位に関わらず内部でgalへ変換してから計算するため、戻り値の単位はそれぞれ常にgal・cm/s・cmです。`peak_ground_velocity`・`peak_ground_displacement`はどちらも渡された成分の合成値を返します(`peak_ground_acceleration`と同じ規約)。3成分を渡せば3成分合成、水平2成分だけを渡せば水平PGV/PGDになります。どちらを採るかは解析側の選択なので、これらの関数側では固定していません。
 
 気象庁「長周期地震動の観測結果」ページが`max.csv`で公表している最大速度は、この既定(補正なしの台形積分)とは一致しません。代わりに、長周期地震動階級の計算で使っている20秒ハイパスを加速度に先に適用してから積分すると、268観測点で相対誤差の中央値0.01%程度まで一致します。このハイパスは`pyshindo.long_period.apply_ground_motion_high_pass`として公開しています:
 
@@ -180,13 +186,16 @@ pgd = float(np.max(vector_resultant(displacement)))
 ```python
 calculate_spectrum_intensity(acceleration, sampling_rate_hz=100.0, *, unit="gal",
                               damping_ratio=0.20, periods_s=None,
-                              component_axis=-1, retain_spectrum=False)
+                              component_axis=-1, retain_velocity_time_series=False)
     -> SpectrumIntensityResult
 
 result.si_cm_s        # 成分ごとのSI値 [cm/s]、shape (成分数,)
 result.sv_cm_s         # 周期ごとの相対速度応答スペクトル、shape (周期数, 成分数)
 result.periods_s       # 既定は0.1〜2.5秒を121分割した等間隔グリッド
+result.sv_time_series_cm_s  # サンプル単位の応答。retain_velocity_time_series=True のときだけ
 ```
+
+`sv_cm_s`(周期ごとの最大値)はフラグに関係なく常に返ります。`retain_velocity_time_series`が制御するのは、それよりはるかに大きい`(サンプル数, 周期数, 成分数)`の時系列`sv_time_series_cm_s`だけです。
 
 Housnerのスペクトル強度(SI値): `SI = (1/2.4) * ∫[0.1, 2.5] Sv(T, h=0.20) dT`。`Sv`は**相対**速度応答スペクトルで、長周期地震動階級が使う**絶対**速度応答スペクトルとは別物です。水平2成分は合成しません(`peak_ground_velocity`と同じく、どの成分を渡すかは呼び出し側の選択です。実務上の慣行はNS/EW水平2成分を個別に扱うことなので、水平だけが欲しい場合は`acceleration[:, :2]`)。
 
@@ -243,12 +252,39 @@ AccelerationUnit: "gal" / "m/s^2" / "g"
 STANDARD_GRAVITY_MPS2 = 9.80665
 ```
 
+## 例外と警告
+
+```python
+PyShindoError                      # このパッケージ固有の例外の基底クラス
+├─ InvalidAccelerationError        # 加速度データの形状・値が不正(ValueErrorでもある)
+├─ InsufficientDataError           # 記録が要求された計算に対して短すぎる
+├─ UnstableFilterError             # 要求された漸化式フィルタが数値的に不安定
+└─ DataFormatError                 # 入力記録が想定フォーマットと一致しない
+
+PyShindoWarning                    # このパッケージ固有の警告の基底クラス
+├─ NonstandardSamplingRateWarning  # 100 Hz以外のサンプリング周波数で計算している
+├─ NonstandardProcessingWarning    # 任意の前処理が参照計算を変更している
+├─ MissingComponentWarning         # 3成分未満の加速度を使っている
+└─ FractionalDurationWarning       # 継続時間が整数サンプル数にならない
+```
+
+いずれも`pyshindo`直下と`pyshindo.exceptions`の両方から参照できます。例外側は`ValueError`も継承しているため、`except ValueError`で書かれた既存のコードでも捕捉されます。このパッケージ由来かどうかで区別したい場合は`except PyShindoError`を使ってください。
+
+警告は`warnings`モジュールの標準的な仕組みで制御できます:
+
+```python
+import warnings
+from pyshindo import NonstandardSamplingRateWarning
+
+warnings.filterwarnings("ignore", category=NonstandardSamplingRateWarning)
+```
+
 ## 合成データ
 
 ```python
 synthetic_three_component_motion(sampling_rate_hz=100.0, duration_s=30.0, ...) -> ndarray
-scale_acceleration_to_intensity(acceleration, target_intensity_raw, sampling_rate_hz=100.0)
-    -> tuple[ndarray, float]
+scale_acceleration_to_intensity(acceleration, sampling_rate_hz=100.0, *,
+                                 target_intensity_raw) -> tuple[ndarray, float]
 ```
 
 テスト・デモ用の決定論的な3成分波形生成と、目標の生震度値に合わせた振幅スケーリング。物理的な地震動シミュレータではありません。

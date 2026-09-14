@@ -144,7 +144,7 @@ class LongPeriodEstimator:
             sample_index=self._response.sample_count - 1,
             sample_count=self._response.sample_count,
             max_sva_so_far_cm_s=maximum,
-            class_so_far=classify_long_period(maximum),
+            long_period_class_so_far=classify_long_period(maximum),
             elapsed_s=elapsed_s,
         )
 
@@ -153,7 +153,7 @@ class LongPeriodEstimator:
 
         The same shape of answer :func:`calculate_long_period_class` gives, so
         a streaming run can be reported or compared without a second pass.
-        ``absolute_velocity_cm_s`` is always ``None``: the estimator keeps
+        ``absolute_velocity_time_series_cm_s`` is always ``None``: the estimator keeps
         only running maxima.
         """
         sva = self.sva_cm_s
@@ -182,6 +182,6 @@ class LongPeriodEstimator:
             component_count=2,
             high_pass_applied=self._high_pass,
             reference_conditions_met=reference_conditions_met,
-            absolute_velocity_cm_s=None,
+            absolute_velocity_time_series_cm_s=None,
             timing=LongPeriodTiming(high_pass_s=0.0, response_s=0.0, total_s=0.0),
         )

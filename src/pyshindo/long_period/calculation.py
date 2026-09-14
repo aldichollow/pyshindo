@@ -329,7 +329,7 @@ def calculate_long_period_class(
         component_count=values_gal.shape[1],
         high_pass_applied=high_pass,
         reference_conditions_met=reference_conditions_met,
-        absolute_velocity_cm_s=collected,
+        absolute_velocity_time_series_cm_s=collected,
         timing=LongPeriodTiming(
             high_pass_s=high_pass_elapsed,
             response_s=response_elapsed,

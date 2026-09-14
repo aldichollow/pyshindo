@@ -63,6 +63,7 @@ def as_acceleration_array(
     component_axis: int = -1,
     allow_fewer_components: bool = True,
     warn_fewer_components: bool = True,
+    warn_stacklevel: int = 3,
     copy: bool = False,
 ) -> FloatArray:
     """Return finite acceleration as ``(samples, components)`` float64 data.
@@ -108,11 +109,13 @@ def as_acceleration_array(
                 "Three orthogonal acceleration components are required for this calculation."
             )
         if warn_fewer_components:
+            # Default 3: this frame, the package function that called it, and
+            # then the user's own call -- which is the one worth pointing at.
             warnings.warn(
                 f"Only {array.shape[1]} acceleration component(s) were supplied. The resulting "
                 "intensity is not the standard three-component value.",
                 MissingComponentWarning,
-                stacklevel=2,
+                stacklevel=warn_stacklevel,
             )
     return np.ascontiguousarray(array)
 

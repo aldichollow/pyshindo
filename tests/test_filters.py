@@ -94,7 +94,9 @@ def test_jma_fft_filter_matches_integer_cycle_sine_gain() -> None:
     frequency_hz = 2.0
     time_s = np.arange(sample_count, dtype=np.float64) / sampling_rate_hz
     wave = np.sin(2.0 * np.pi * frequency_hz * time_s)
-    filtered, _, _ = apply_jma_filter_fft(wave[:, np.newaxis], sampling_rate_hz)
+    filtered = apply_jma_filter_fft(
+        wave[:, np.newaxis], sampling_rate_hz
+    ).filtered_acceleration_gal
     expected_gain = jma_filter_response(np.array([frequency_hz]))[0]
     np.testing.assert_allclose(filtered[:, 0], expected_gain * wave, rtol=0.0, atol=2e-13)
 

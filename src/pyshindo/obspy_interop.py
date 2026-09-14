@@ -42,6 +42,10 @@ from .models import ObsPyRecord, ObsPyRecordMetadata
 from .units import AccelerationUnit
 from .validation import as_acceleration_array
 
+# require_obspy is deliberately absent: it is the lazy-import helper the two
+# entry points below use, not part of what this module offers.
+__all__ = ["apply_obspy_calibration", "from_obspy_stream"]
+
 _ORIENTATION_CODES: Final = {
     "N": (0, "NS"),
     "1": (0, "H1"),
@@ -289,7 +293,7 @@ def from_obspy_stream(
     stats = traces[0].stats
     metadata = ObsPyRecordMetadata(
         network=str(stats.network),
-        station=str(stats.station),
+        station_code=str(stats.station),
         location=str(stats.location),
         channel_codes=tuple(str(trace.stats.channel) for trace in traces),
         component_names=tuple(_component_label(str(trace.stats.channel)) for trace in traces),

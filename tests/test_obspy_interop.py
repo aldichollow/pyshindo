@@ -47,7 +47,7 @@ def test_traces_are_ordered_and_labeled_from_seed_orientation_codes() -> None:
     assert record.metadata.channel_codes == ("HNN", "HNE", "HNZ")
     assert record.acceleration.shape == (300, 3)
     assert record.metadata.sampling_rate_hz == SAMPLING_RATE_HZ
-    assert record.metadata.station == "TEST"
+    assert record.metadata.station_code == "TEST"
     assert record.metadata.unit == "gal"
     assert record.duration_s == pytest.approx(3.0)
 

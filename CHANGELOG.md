@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0 - 2026-09-14
+
+First release published to PyPI, with the public API reviewed for consistency. See [`docs/migration.md`](docs/migration.md) for the upgrade path -- every breaking change is listed there with before/after code.
+
+Renamed (breaking):
+
+- `intensity_from_acceleration`, `acceleration_from_intensity`, `intensity_series_from_acceleration` -> `..._threshold_acceleration` forms. They take a 0.3-second threshold acceleration, not a waveform.
+- `calculate_spectrum_intensity`'s `retain_spectrum` -> `retain_velocity_time_series`; it never controlled `sv_cm_s`, which is always returned.
+- `published_lowrate_gamma_set`'s `policy` -> `lowrate_gamma_policy`, matching `design_realtime_filter`.
+- `ObsPyRecordMetadata.station` -> `station_code`; `LongPeriodResult.absolute_velocity_cm_s` -> `absolute_velocity_time_series_cm_s`; `LongPeriodUpdate.class_so_far` -> `long_period_class_so_far`.
+
+Changed (breaking):
+
+- `realtime_intensity`'s `reported` now defaults to `True`, matching `measured_intensity`. The two returned different quantities under the same keyword.
+- `peak_ground_acceleration` and `component_peak_acceleration` take `unit=` and always return gal, matching the PGV and PGD pairs.
+- `apply_jma_filter_fft` returns `JMAFilterResult` instead of a bare tuple, takes `unit=`, and defaults `sampling_rate_hz` to 100.0.
+- `scale_acceleration_to_intensity`'s `target_intensity_raw` is keyword-only, so the second positional argument is `sampling_rate_hz` as everywhere else.
+- `SpectrumIntensityEstimator` no longer warns on a non-100 Hz rate, and its `warn_nonstandard_rate` argument is gone; the batch function never warned.
+- `RealtimeIntensityEstimator`'s configuration attributes are read-only; assigning to them silently desynced the filter design from the rate.
+
+Added:
+
+- Every exception and warning class, `pyshindo.long_period`, `MeasuredIntensityTiming`, `RealtimeChunkTiming`, `report_intensity_array`, and `intensity_series_from_threshold_acceleration` are reachable from `pyshindo` directly.
+- `RealtimeIntensityEstimator.approximate_scale`, the running intensity class.
+
+Fixed:
+
+- `NonstandardSamplingRateWarning`, `MissingComponentWarning`, and `FractionalDurationWarning` now point at the caller's line instead of pyshindo's own source.
+
+Docs and packaging:
+
+- `docs/migration.md`; documented why `RealtimeIntensityEstimator` has no `result()`.
+- `Typing :: Typed` classifier; README links are absolute so they resolve on PyPI.
+
 ## 0.2.2 - 2026-09-13
 
 - Added: peak ground displacement -- `integrate_to_displacement`, `component_peak_displacement`, `peak_ground_displacement`, alongside the existing velocity trio.

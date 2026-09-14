@@ -74,9 +74,9 @@ def synthetic_three_component_motion(
 
 def scale_acceleration_to_intensity(
     acceleration: ArrayLike,
-    target_intensity_raw: float,
     sampling_rate_hz: float = 100.0,
     *,
+    target_intensity_raw: float,
     unit: str | AccelerationUnit = AccelerationUnit.GAL,
     component_axis: int = -1,
     allow_fewer_components: bool = False,
@@ -91,6 +91,12 @@ def scale_acceleration_to_intensity(
     it must be set for a one- or two-component record, including a
     one-dimensional ``acceleration``, to be accepted rather than rejected as
     short of the standard three components.
+
+    ``target_intensity_raw`` is keyword-only so that the second positional
+    argument means ``sampling_rate_hz`` here exactly as it does in every other
+    acceleration-taking function in the package; an earlier signature put the
+    target intensity in that slot, where ``f(record, 200.0)`` silently meant
+    "scale to intensity 200" instead of "200 Hz".
     """
     target = float(target_intensity_raw)
     if not math.isfinite(target):

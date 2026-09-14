@@ -222,7 +222,7 @@ def _piecewise_gammas(rate: float) -> tuple[float, float, float, float]:
 def published_lowrate_gamma_set(
     sampling_rate_hz: float,
     *,
-    policy: str | LowRateGammaPolicy = LowRateGammaPolicy.PIECEWISE,
+    lowrate_gamma_policy: str | LowRateGammaPolicy = LowRateGammaPolicy.PIECEWISE,
 ) -> LowRateGammaSet:
     """Return source-described gamma values for the generalized low-rate filter.
 
@@ -240,7 +240,7 @@ def published_lowrate_gamma_set(
     rate = float(sampling_rate_hz)
     if not math.isfinite(rate) or rate < 1.0:
         raise ValueError("sampling_rate_hz must be finite and at least 1 Hz.")
-    selected = LowRateGammaPolicy.parse(policy)
+    selected = LowRateGammaPolicy.parse(lowrate_gamma_policy)
     if selected is LowRateGammaPolicy.PIECEWISE:
         values = _piecewise_gammas(rate)
     elif selected is LowRateGammaPolicy.CONSTANT_ACCURATE:
@@ -835,7 +835,7 @@ def design_realtime_filter(
                     "frequencies 0.5, 12, 20, and 30 Hz. Supply explicit lowrate_gammas "
                     "or use a constant gamma policy for custom frequencies."
                 )
-            gammas = published_lowrate_gamma_set(rate, policy=policy)
+            gammas = published_lowrate_gamma_set(rate, lowrate_gamma_policy=policy)
         else:
             gammas = lowrate_gammas
         sos = _kunugi_lowrate_sos(rate, parameters, gammas)

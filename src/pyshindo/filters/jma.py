@@ -14,7 +14,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import fft
 
-from ..units import FloatArray
+from ..units import AccelerationUnit, FloatArray, to_gal
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,28 +80,39 @@ def jma_filter_response(frequency_hz: npt.ArrayLike) -> FloatArray:
     return jma_filter_components(frequency_hz).combined
 
 
+@dataclass(frozen=True, slots=True)
+class JMAFilterResult:
+    """Output of one FFT pass of the published JMA intensity filter.
+
+    A dataclass rather than a bare tuple so that a future addition here does
+    not break unpacking at every call site.
+    """
+
+    filtered_acceleration_gal: FloatArray
+    frequency_hz: FloatArray
+    response: FloatArray
+
+
 def apply_jma_filter_fft(
-    acceleration_gal: npt.ArrayLike,
-    sampling_rate_hz: float,
+    acceleration: npt.ArrayLike,
+    sampling_rate_hz: float = 100.0,
     *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
     workers: int | None = None,
-) -> tuple[FloatArray, FloatArray, FloatArray]:
+) -> JMAFilterResult:
     """Filter acceleration using an FFT, the published response, and an inverse FFT.
 
     Parameters
     ----------
-    acceleration_gal:
-        A contiguous array shaped ``(samples, components)`` in gal.
+    acceleration:
+        An array shaped ``(samples, components)``. Converted to gal first, so
+        the filtered output is always gal regardless of the input unit.
     sampling_rate_hz:
         Sampling frequency in hertz.
+    unit:
+        ``"gal"``, ``"m/s^2"``, or ``"g"``.
     workers:
         Optional number of FFT worker threads accepted by :mod:`scipy.fft`.
-
-    Returns
-    -------
-    filtered, frequency, response:
-        Filtered time histories, non-negative FFT frequencies, and the real
-        amplitude response applied to every component.
 
     Notes
     -----
@@ -110,24 +121,26 @@ def apply_jma_filter_fft(
     processing procedure. Such preprocessing can be performed explicitly with
     :mod:`pyshindo.signal` when required by a data source.
     """
-    values = np.asarray(acceleration_gal, dtype=np.float64)
+    parsed_unit = AccelerationUnit.parse(unit)
+    values = np.asarray(acceleration, dtype=np.float64)
     if values.ndim != 2:
-        raise ValueError("acceleration_gal must have shape (samples, components).")
+        raise ValueError("acceleration must have shape (samples, components).")
     if values.shape[0] == 0:
-        raise ValueError("acceleration_gal must contain at least one sample.")
+        raise ValueError("acceleration must contain at least one sample.")
     if not np.all(np.isfinite(values)):
-        raise ValueError("acceleration_gal contains non-finite values.")
+        raise ValueError("acceleration contains non-finite values.")
     if not np.isfinite(sampling_rate_hz) or sampling_rate_hz <= 0.0:
         raise ValueError("sampling_rate_hz must be finite and greater than zero.")
+    values_gal = to_gal(values, parsed_unit, copy=False)
 
-    sample_count = values.shape[0]
+    sample_count = values_gal.shape[0]
     frequency = fft.rfftfreq(sample_count, d=1.0 / sampling_rate_hz)
     response = jma_filter_response(frequency)
-    spectrum = fft.rfft(values, axis=0, workers=workers)
+    spectrum = fft.rfft(values_gal, axis=0, workers=workers)
     spectrum *= response[:, np.newaxis]
     filtered = fft.irfft(spectrum, n=sample_count, axis=0, workers=workers)
-    return (
-        np.ascontiguousarray(filtered, dtype=np.float64),
-        np.asarray(frequency, dtype=np.float64),
-        response,
+    return JMAFilterResult(
+        filtered_acceleration_gal=np.ascontiguousarray(filtered, dtype=np.float64),
+        frequency_hz=np.asarray(frequency, dtype=np.float64),
+        response=response,
     )

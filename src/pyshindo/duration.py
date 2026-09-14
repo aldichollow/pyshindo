@@ -21,12 +21,18 @@ def duration_sample_count(
     *,
     policy: DurationSamplePolicy = "ceil",
     warn_fractional: bool = True,
+    warn_stacklevel: int = 2,
 ) -> int:
     """Convert a physical duration to a positive number of samples.
 
     ``ceil`` is the default because it never represents less than the requested
     duration. At 100 Hz, the standard 0.3-second condition maps exactly to 30
     samples and all policies agree.
+
+    ``warn_stacklevel`` exists only so that the functions calling this one
+    internally can have ``FractionalDurationWarning`` point at their own
+    caller rather than at their own source line. The default is correct when
+    this function is called directly.
     """
     duration_s = float(duration_s)
     sampling_rate_hz = float(sampling_rate_hz)
@@ -43,7 +49,7 @@ def duration_sample_count(
             f"{duration_s:g} s corresponds to {exact:.6g} samples at "
             f"{sampling_rate_hz:g} Hz. The {policy!r} sample-count policy is used.",
             FractionalDurationWarning,
-            stacklevel=2,
+            stacklevel=warn_stacklevel,
         )
 
     if policy == "ceil":
@@ -105,7 +111,9 @@ def duration_threshold_at(
     This convenience wrapper converts ``duration_s`` to a sample count and then
     calls :func:`duration_threshold`.
     """
-    sample_count = duration_sample_count(duration_s, sampling_rate_hz, policy=policy)
+    sample_count = duration_sample_count(
+        duration_s, sampling_rate_hz, policy=policy, warn_stacklevel=3
+    )
     return duration_threshold(resultant_acceleration_gal, sample_count)
 
 

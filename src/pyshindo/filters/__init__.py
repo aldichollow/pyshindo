@@ -2,6 +2,7 @@
 
 from .jma import (
     JMAFilterComponents,
+    JMAFilterResult,
     apply_jma_filter_fft,
     jma_filter_components,
     jma_filter_response,
@@ -28,6 +29,7 @@ __all__ = [
     "LowRateGammaPolicy",
     "LowRateGammaSet",
     "RealtimeFilter",
+    "JMAFilterResult",
     "apply_jma_filter_fft",
     "design_realtime_filter",
     "filter_stage_response",

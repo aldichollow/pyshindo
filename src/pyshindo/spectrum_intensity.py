@@ -92,7 +92,7 @@ class SpectrumIntensityResult:
     always present; it is what ``si_cm_s`` integrates and what a
     response-spectrum plot needs. ``sv_time_series_cm_s`` is the much larger
     full per-sample response, ``(samples, periods, components)``, kept only
-    when ``retain_spectrum`` was set.
+    when ``retain_velocity_time_series`` was set.
     """
 
     si_cm_s: FloatArray
@@ -119,7 +119,7 @@ def calculate_spectrum_intensity(
     damping_ratio: float = DEFAULT_DAMPING_RATIO,
     periods_s: npt.ArrayLike | None = None,
     component_axis: int = -1,
-    retain_spectrum: bool = False,
+    retain_velocity_time_series: bool = False,
 ) -> SpectrumIntensityResult:
     """Calculate Housner's spectrum intensity (SI) for each acceleration component.
 
@@ -145,7 +145,7 @@ def calculate_spectrum_intensity(
         Defaults to :func:`default_periods_s`, a 121-point linear grid over
         0.1-2.5 s. A custom grid must still span periods a caller wants
         integrated; SI outside that convention is not the published index.
-    retain_spectrum:
+    retain_velocity_time_series:
         Keep the full ``(samples, periods, components)`` per-sample relative
         velocity response, in ``sv_time_series_cm_s``. Off by default because
         it is one array per period rather than one scalar. The peak-per-period
@@ -168,7 +168,9 @@ def calculate_spectrum_intensity(
 
     response_started = time.perf_counter()
     bank = design_oscillator_bank(periods, damping_ratio, rate)
-    peaks, series = relative_velocity_response(bank, values_gal, collect=retain_spectrum)
+    peaks, series = relative_velocity_response(
+        bank, values_gal, collect=retain_velocity_time_series
+    )
     response_elapsed = time.perf_counter() - response_started
 
     si = trapezoid(peaks, periods, axis=0) / INTEGRATION_WIDTH_S
@@ -241,11 +243,13 @@ class SpectrumIntensityEstimator:
         unit: str | AccelerationUnit = AccelerationUnit.GAL,
         damping_ratio: float = DEFAULT_DAMPING_RATIO,
         periods_s: npt.ArrayLike | None = None,
-        warn_nonstandard_rate: bool = True,
     ) -> None:
-        rate = validate_sampling_rate(
-            sampling_rate_hz, warn_nonstandard=warn_nonstandard_rate, stacklevel=3
-        )
+        # No warning for a non-100 Hz rate, and no flag to ask for one: as
+        # calculate_spectrum_intensity documents, no published constant here is
+        # tied to a rate, and the solver is exact at any rate for a smooth
+        # input. An earlier version warned from this constructor only, which
+        # made the streaming and batch paths disagree about the same record.
+        rate = validate_sampling_rate(sampling_rate_hz, warn_nonstandard=False)
         self._rate = rate
         self._dt = 1.0 / rate
         self._unit = AccelerationUnit.parse(unit)

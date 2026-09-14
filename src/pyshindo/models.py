@@ -354,7 +354,7 @@ class ObsPyRecordMetadata:
     """
 
     network: str
-    station: str
+    station_code: str
     location: str
     channel_codes: tuple[str, ...]
     component_names: tuple[str, ...]

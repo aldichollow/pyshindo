@@ -299,7 +299,7 @@ def test_sample_by_sample_streaming_is_identical_to_batch() -> None:
         update = estimator.process_sample(sample)
     np.testing.assert_array_equal(estimator.sva_cm_s, batch.sva_cm_s)
     assert update.sample_count == values.shape[0]
-    assert update.class_so_far is batch.long_period_class
+    assert update.long_period_class_so_far is batch.long_period_class
 
 
 def test_both_solvers_agree_to_floating_point_rounding() -> None:
@@ -335,10 +335,13 @@ def test_retained_response_agrees_between_solvers() -> None:
     reference = calculate_long_period_class(
         values, RATE, solver="recurrence", retain_response=True
     )
-    assert fast.absolute_velocity_cm_s is not None
-    assert reference.absolute_velocity_cm_s is not None
+    assert fast.absolute_velocity_time_series_cm_s is not None
+    assert reference.absolute_velocity_time_series_cm_s is not None
     np.testing.assert_allclose(
-        fast.absolute_velocity_cm_s, reference.absolute_velocity_cm_s, rtol=1e-9, atol=1e-12
+        fast.absolute_velocity_time_series_cm_s,
+        reference.absolute_velocity_time_series_cm_s,
+        rtol=1e-9,
+        atol=1e-12,
     )
 
 
@@ -501,13 +504,13 @@ def test_quiet_record_is_class_zero_and_finite() -> None:
 
 def test_retain_response_returns_the_full_history_only_when_asked() -> None:
     values = horizontal_record(duration_s=5.0)
-    assert calculate_long_period_class(values, RATE).absolute_velocity_cm_s is None
+    assert calculate_long_period_class(values, RATE).absolute_velocity_time_series_cm_s is None
     retained = calculate_long_period_class(values, RATE, retain_response=True)
-    assert retained.absolute_velocity_cm_s is not None
-    assert retained.absolute_velocity_cm_s.shape == (values.shape[0], 32)
+    assert retained.absolute_velocity_time_series_cm_s is not None
+    assert retained.absolute_velocity_time_series_cm_s.shape == (values.shape[0], 32)
     # The reported spectrum is exactly the column-wise maximum of that history.
     np.testing.assert_allclose(
-        retained.absolute_velocity_cm_s.max(axis=0), retained.sva_cm_s, rtol=1e-12
+        retained.absolute_velocity_time_series_cm_s.max(axis=0), retained.sva_cm_s, rtol=1e-12
     )
 
 

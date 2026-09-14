@@ -43,13 +43,14 @@ horizontal = calculate_spectrum_intensity(
 )
 print(f"\nHorizontal-only SI (NS, EW): {horizontal.si_cm_s}")
 
-# %% retain_spectrum=True keeps the full response spectrum, Sv(T), not just
-# the integrated SI value -- the same curve the integral averages over 2.4 s
+# %% The response spectrum Sv(T) is always returned in sv_cm_s, not just the
+# integrated SI value -- it is the curve the integral averages over 2.4 s.
+# (retain_velocity_time_series is a separate, off-by-default flag for the much
+# larger per-sample response, sv_time_series_cm_s, which is not needed here.)
 detailed = calculate_spectrum_intensity(
     np.ascontiguousarray(acceleration_gal[:, :1]),
     sampling_rate_hz,
     unit="gal",
-    retain_spectrum=True,
 )
 peak_index = int(np.argmax(detailed.sv_cm_s[:, 0]))
 peak_period_s = detailed.periods_s[peak_index]

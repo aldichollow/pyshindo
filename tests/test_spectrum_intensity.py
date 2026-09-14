@@ -159,15 +159,15 @@ def test_unit_conversion_scales_si_consistently() -> None:
     np.testing.assert_allclose(result_gal.si_cm_s, result_ms2.si_cm_s, rtol=1e-10)
 
 
-def test_retain_spectrum_returns_the_full_response_only_when_asked() -> None:
+def test_retain_velocity_time_series_returns_the_full_response_only_when_asked() -> None:
     acc = record(duration_s=3.0)[:, :2]
     default = calculate_spectrum_intensity(acc, RATE, unit="gal")
-    retained = calculate_spectrum_intensity(acc, RATE, unit="gal", retain_spectrum=True)
+    retained = calculate_spectrum_intensity(acc, RATE, unit="gal", retain_velocity_time_series=True)
     assert default.sv_time_series_cm_s is None
     assert retained.sv_time_series_cm_s is not None
     assert retained.sv_time_series_cm_s.shape == (acc.shape[0], len(default.periods_s), 2)
     # The peak-per-period spectrum is cheap and always present, regardless of
-    # retain_spectrum -- it is what a response-spectrum plot actually needs.
+    # retain_velocity_time_series -- it is what a response-spectrum plot actually needs.
     assert default.sv_cm_s.shape == (len(default.periods_s), 2)
     np.testing.assert_allclose(
         retained.sv_cm_s, np.abs(retained.sv_time_series_cm_s).max(axis=0)

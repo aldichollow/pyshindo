@@ -1,0 +1,106 @@
+name: Publish
+
+# Two ways in:
+#
+#   workflow_dispatch  -> pick testpypi (rehearsal) or pypi (real release)
+#   pushing a v* tag   -> PyPI
+#
+# Both go through the same build job, so what reaches PyPI is the artifact
+# that was tested here, not a separate local build.
+#
+# Publishing uses PyPI's trusted publishing, so no API token is stored in this
+# repository. The corresponding publisher must be registered on the index side
+# for this repository, this workflow filename, and the environment named below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Index to publish to
+        required: true
+        default: testpypi
+        type: choice
+        options:
+          - testpypi
+          - pypi
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[plot,obspy,dev]"
+
+      # A PyPI version can never be replaced, so the same checks CI runs are
+      # repeated here rather than assumed to have passed on this commit.
+      - run: ruff check .
+      - run: mypy src/pyshindo
+      - run: pytest --cov=pyshindo --cov-report=term-missing --cov-fail-under=86
+
+      # On a tag, refuse to build unless the tag and __version__ agree.
+      - name: Check the tag matches the package version
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(python -c 'import pyshindo; print(pyshindo.__version__)')"
+          if [ "$tag" != "$version" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match __version__ ${version}." >&2
+            exit 1
+          fi
+          echo "Tag ${GITHUB_REF_NAME} matches __version__ ${version}."
+
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  testpypi:
+    needs: build
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    needs: build
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

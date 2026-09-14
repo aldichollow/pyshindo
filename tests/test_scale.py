@@ -6,24 +6,24 @@ import pytest
 from pyshindo.scale import (
     INTENSITY_INTERVALS,
     IntensityScale,
-    acceleration_from_intensity,
     classify_intensity,
     classify_intensity_array,
-    intensity_from_acceleration,
+    intensity_from_threshold_acceleration,
     intensity_interval,
     intensity_label,
     report_intensity,
+    threshold_acceleration_from_intensity,
 )
 
 
 @pytest.mark.parametrize("intensity", [-2.0, 0.0, 4.5, 6.732])
 def test_acceleration_intensity_round_trip(intensity: float) -> None:
-    acceleration = acceleration_from_intensity(intensity)
-    assert intensity_from_acceleration(acceleration) == pytest.approx(intensity)
+    acceleration = threshold_acceleration_from_intensity(intensity)
+    assert intensity_from_threshold_acceleration(acceleration) == pytest.approx(intensity)
 
 
 def test_zero_acceleration_maps_to_negative_infinity() -> None:
-    assert intensity_from_acceleration(0.0) == -np.inf
+    assert intensity_from_threshold_acceleration(0.0) == -np.inf
 
 
 @pytest.mark.parametrize(

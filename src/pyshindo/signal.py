@@ -48,24 +48,46 @@ def vector_resultant(acceleration: npt.ArrayLike, *, component_axis: int = -1) -
 def component_peak_acceleration(
     acceleration: ArrayLike,
     *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
     component_axis: int = -1,
 ) -> FloatArray:
-    """Return the maximum absolute acceleration of each component."""
+    """Return the maximum absolute acceleration of each component in gal.
+
+    Input is converted to gal first, so the result is always gal regardless of
+    the input unit -- the same convention
+    :func:`pyshindo.velocity.component_peak_velocity` and
+    :func:`pyshindo.velocity.component_peak_displacement` follow for cm/s and
+    cm. An earlier version took no ``unit`` and returned the input unit
+    unchanged, which meant a PGA and a PGV computed from the same m/s^2 record
+    came back in different units with nothing in either name to say so.
+    """
+    parsed_unit = AccelerationUnit.parse(unit)
     values = as_acceleration_array(
         acceleration,
         component_axis=component_axis,
         warn_fewer_components=False,
     )
-    return np.max(np.abs(values), axis=0)
+    values_gal = to_gal(values, parsed_unit, copy=False)
+    return np.max(np.abs(values_gal), axis=0)
 
 
 def peak_ground_acceleration(
     acceleration: npt.ArrayLike,
     *,
+    unit: str | AccelerationUnit = AccelerationUnit.GAL,
     component_axis: int = -1,
 ) -> float:
-    """Return the maximum vector-resultant acceleration in the input unit."""
-    resultant = vector_resultant(acceleration, component_axis=component_axis)
+    """Return the maximum vector-resultant acceleration (PGA) in gal.
+
+    The resultant is taken over whichever components are supplied, matching
+    :func:`pyshindo.velocity.peak_ground_velocity` and
+    :func:`pyshindo.velocity.peak_ground_displacement`. Input is converted to
+    gal first -- see :func:`component_peak_acceleration` for why.
+    """
+    parsed_unit = AccelerationUnit.parse(unit)
+    values = np.asarray(acceleration, dtype=np.float64)
+    values_gal = to_gal(values, parsed_unit, copy=False)
+    resultant = vector_resultant(values_gal, component_axis=component_axis)
     if resultant.size == 0:
         raise ValueError("acceleration must contain at least one sample.")
     return float(np.max(resultant))

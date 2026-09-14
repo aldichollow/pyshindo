@@ -87,8 +87,12 @@ _SCALE_LOWER_BOUNDS: Final[tuple[tuple[float, IntensityScale], ...]] = tuple(
 )
 
 
-def intensity_from_acceleration(threshold_acceleration_gal: float) -> float:
+def intensity_from_threshold_acceleration(threshold_acceleration_gal: float) -> float:
     """Convert the 0.3-second threshold acceleration to raw intensity.
+
+    The input is the single amplitude the 0.3-second cumulative-duration rule
+    selected -- not an acceleration waveform. Pass a complete record to
+    :func:`pyshindo.measured_intensity` instead.
 
     Zero acceleration maps to negative infinity. Positive acceleration is
     transformed as ``2 * log10(a) + 0.94``, where ``a`` is in gal.
@@ -100,15 +104,21 @@ def intensity_from_acceleration(threshold_acceleration_gal: float) -> float:
     return 2.0 * log10(threshold_acceleration_gal) + 0.94
 
 
-def acceleration_from_intensity(intensity: float) -> float:
-    """Return the threshold acceleration in gal implied by a raw intensity value."""
+def threshold_acceleration_from_intensity(intensity: float) -> float:
+    """Return the threshold acceleration in gal implied by a raw intensity value.
+
+    The exact inverse of :func:`intensity_from_threshold_acceleration`.
+    """
     if not isfinite(intensity):
         raise ValueError("intensity must be finite.")
     return 10.0 ** ((intensity - 0.94) / 2.0)
 
 
-def intensity_series_from_acceleration(values_gal: ArrayLike) -> FloatArray:
-    """Vectorize the raw intensity conversion over acceleration values.
+def intensity_series_from_threshold_acceleration(values_gal: ArrayLike) -> FloatArray:
+    """Vectorize :func:`intensity_from_threshold_acceleration` over an array.
+
+    Every element is a 0.3-second threshold acceleration, as produced by a
+    rolling window -- not an acceleration waveform.
 
     Zero values map to negative infinity. Negative and NaN values map to NaN so
     an unavailable rolling threshold remains distinguishable from quiet motion.

@@ -8,9 +8,9 @@
 
 計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位。いずれも気象庁が定義・公表している量です)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
 
-詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](docs/algorithm.md)(計測震度)と [`docs/long-period.md`](docs/long-period.md)(長周期地震動階級)にあります。
+詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/algorithm.md)(計測震度)と [`docs/long-period.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/long-period.md)(長周期地震動階級)にあります。
 
-本パッケージは個人が趣味として開発しているものです。計算結果の正確性・完全性を保証するものではありませんので、ご利用は自己判断・自己責任でお願いします。
+本パッケージは個人で開発しているものです。一次資料にあたって実装し、公開データとの照合結果も[`docs/validation.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/validation.md)に記録していますが、計算結果の正確性・完全性を保証するものではありません。ご利用は自己判断・自己責任でお願いします。
 
 ---
 
@@ -138,7 +138,7 @@ so a record with a nonzero mean integrates into a linearly drifting velocity
 PGD is considerably more sensitive to an uncorrected baseline than PGV is.
 Apply `remove_offset`, `detrend_acceleration`, or a high-pass filter first,
 and say which one you used. See
-[`examples/06_peak_velocity.py`](examples/06_peak_velocity.py).
+[`examples/06_peak_velocity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/06_peak_velocity.py).
 
 `peak_ground_velocity`/`peak_ground_displacement` take the resultant of
 whichever components you pass, the same as `peak_ground_acceleration`: three
@@ -150,8 +150,8 @@ motion observation page, does not match this default -- but does match, to
 about 0.01 percent across 268 stations, once the same 20-second high-pass used
 for the long-period class is applied to the acceleration first
 (`pyshindo.long_period.apply_ground_motion_high_pass`). See
-[`docs/validation.md`](docs/validation.md) for the finding and
-[`docs/api.md`](docs/api.md) for the recipe.
+[`docs/validation.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/validation.md) for the finding and
+[`docs/api.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/api.md) for the recipe.
 
 The same `max.csv`'s published peak *displacement* is not a double integration
 at all -- JMA derives it by filtering acceleration through a filter
@@ -161,7 +161,7 @@ seismometer (natural period 6 s, damping 0.55), which is published in
 `pyshindo.strong_motion.apply_strong_motion_displacement_filter` implements
 this directly from acceleration (no separate integration step) and reproduces
 the published displacement to a median relative error of about 0.15 percent
-across the same 268 stations. See [`docs/validation.md`](docs/validation.md).
+across the same 268 stations. See [`docs/validation.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/validation.md).
 
 ## Long-period ground motion class
 
@@ -184,9 +184,9 @@ gives the same numbers incrementally for streaming input.
 Checked against JMA's own published absolute velocity response spectra: across
 268 stations of two earthquakes, every long-period class matches, and the
 spectra themselves agree to about 1e-5, worst case among the stations checked.
-See [`docs/long-period.md`](docs/long-period.md) for the algorithm and its
-primary sources, [`docs/validation.md`](docs/validation.md) for the full
-comparison, and [`examples/08_long_period.py`](examples/08_long_period.py) to
+See [`docs/long-period.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/long-period.md) for the algorithm and its
+primary sources, [`docs/validation.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/validation.md) for the full
+comparison, and [`examples/08_long_period.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/08_long_period.py) to
 reproduce it.
 
 ## Spectrum intensity (SI value)
@@ -209,7 +209,7 @@ Neither the damping ratio (0.20, specific to SI, not a general structural
 value) nor the 0.1-2.5 s integration range has changed across the sources
 checked, but no published discretization exists for evaluating that integral
 numerically; the 121-point grid used here was chosen by checking convergence
-directly. See [`examples/09_spectrum_intensity.py`](examples/09_spectrum_intensity.py).
+directly. See [`examples/09_spectrum_intensity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/09_spectrum_intensity.py).
 
 ## Reading other formats through ObsPy
 
@@ -225,8 +225,8 @@ A thin adapter, not a reader: it converts a stream that is already in
 acceleration units into the arrays used here and never resamples, trims,
 merges, rotates, or rescales. `unit` is required rather than detected, because
 SEED and the formats around it carry no dependable physical-unit field. See
-[`docs/data.md`](docs/data.md) and
-[`examples/07_obspy_interop.py`](examples/07_obspy_interop.py).
+[`docs/data.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/data.md) and
+[`examples/07_obspy_interop.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/07_obspy_interop.py).
 
 ## Sampling rates other than 100 Hz
 
@@ -242,11 +242,11 @@ The selected design is recorded in `result.filter_name`. An explicit 2012 reques
 
 ## Data and figures
 
-`pyshindo.io` parses the seven-line JMA strong-motion text header and can download one explicitly selected URL. No observed waveform is bundled. See [`docs/data.md`](docs/data.md).
+`pyshindo.io` parses the seven-line JMA strong-motion text header and can download one explicitly selected URL. No observed waveform is bundled. See [`docs/data.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/data.md).
 
 Plotly figures use a restrained package theme. Intensity colors 1 through 7 follow the JMA web color guide; the guide does not assign intensity 0 a color, so the neutral intensity-0 background is identified as a package choice. The long-period class colors are the ones JMA uses on its own long-period observation pages. Multi-station distribution maps (`intensity_map_figure`, `long_period_class_map_figure`, `continuous_value_map_figure`) share the same colors, taking parallel latitude/longitude/value arrays from whichever source produced them.
 
-![pyshindo](docs/images/hero.png)
+![pyshindo](https://raw.githubusercontent.com/aldichollow/pyshindo/main/docs/images/hero.png)
 
 <sub>1つの実記録から計算した例。2026年8月23日 茨城県南部の地震 M5.9、気象庁 浦安市日の出観測点。
 上段は0.3秒継続の閾値がどこで選ばれるか、左下は同じ記録に対するリアルタイム近似とFFT参照計算がほぼ一致すること、
@@ -254,32 +254,33 @@ Plotly figures use a restrained package theme. Intensity colors 1 through 7 foll
 
 ## Documentation
 
-- [Algorithm guide (Japanese)](docs/algorithm.md)
-- [API reference (Japanese)](docs/api.md)
-- [Long-period ground motion class (Japanese)](docs/long-period.md)
-- [Observed data I/O (Japanese)](docs/data.md)
-- [Validation against JMA's published values (Japanese)](docs/validation.md)
+- [Algorithm guide (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/algorithm.md)
+- [API reference (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/api.md)
+- [Long-period ground motion class (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/long-period.md)
+- [Observed data I/O (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/data.md)
+- [Validation against JMA's published values (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/validation.md)
+- [Migration guide (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/migration.md)
 
 ## Examples
 
-Each file in [`examples/`](examples/) is a runnable script written with `# %%`
+Each file in [`examples/`](https://github.com/aldichollow/pyshindo/tree/main/examples) is a runnable script written with `# %%`
 cell markers, so it can be executed top to bottom or stepped through in an
 interactive window.
 
 |                                                                     |                                                                                                    |
 | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| [`00_quickstart.py`](examples/00_quickstart.py)                     | Every headline result in one page: measured intensity, real-time intensity, PGV/PGD, long-period class, SI value |
-| [`01_measured_intensity.py`](examples/01_measured_intensity.py)     | The FFT reference calculation and its intermediate waveforms                                       |
-| [`02_realtime_intensity.py`](examples/02_realtime_intensity.py)     | Real-time replay, and comparison against the FFT reference                                         |
-| [`03_official_jma_record.py`](examples/03_official_jma_record.py)   | Reproducing JMA's own published intensity from a downloaded record                                 |
-| [`04_filter_designs.py`](examples/04_filter_designs.py)             | The three causal filters and their named analog stages                                             |
-| [`05_streaming_sample_api.py`](examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time                                                         |
-| [`06_peak_velocity.py`](examples/06_peak_velocity.py)               | PGV, PGD, and why baseline treatment has to be your choice (PGD more so)                           |
-| [`07_obspy_interop.py`](examples/07_obspy_interop.py)               | Converting an ObsPy stream into this package's arrays                                              |
-| [`08_long_period.py`](examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
-| [`09_spectrum_intensity.py`](examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
-| [`10_station_map.py`](examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
-| [`11_response_spectrum.py`](examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it           |
+| [`00_quickstart.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/00_quickstart.py)                     | Every headline result in one page: measured intensity, real-time intensity, PGV/PGD, long-period class, SI value |
+| [`01_measured_intensity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/01_measured_intensity.py)     | The FFT reference calculation and its intermediate waveforms                                       |
+| [`02_realtime_intensity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/02_realtime_intensity.py)     | Real-time replay, and comparison against the FFT reference                                         |
+| [`03_official_jma_record.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/03_official_jma_record.py)   | Reproducing JMA's own published intensity from a downloaded record                                 |
+| [`04_filter_designs.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/04_filter_designs.py)             | The three causal filters and their named analog stages                                             |
+| [`05_streaming_sample_api.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/05_streaming_sample_api.py) | Feeding the estimator one sample at a time                                                         |
+| [`06_peak_velocity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/06_peak_velocity.py)               | PGV, PGD, and why baseline treatment has to be your choice (PGD more so)                           |
+| [`07_obspy_interop.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/07_obspy_interop.py)               | Converting an ObsPy stream into this package's arrays                                              |
+| [`08_long_period.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/08_long_period.py)                   | Long-period class, per-band classes, and verification against JMA's published spectra              |
+| [`09_spectrum_intensity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
+| [`10_station_map.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
+| [`11_response_spectrum.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it           |
 
 ## Development
 

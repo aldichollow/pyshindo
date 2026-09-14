@@ -57,7 +57,7 @@ class LongPeriodResult:
     component_count: int
     high_pass_applied: bool
     reference_conditions_met: bool
-    absolute_velocity_cm_s: FloatArray | None
+    absolute_velocity_time_series_cm_s: FloatArray | None
     timing: LongPeriodTiming
 
     @property
@@ -85,5 +85,5 @@ class LongPeriodUpdate:
     sample_index: int
     sample_count: int
     max_sva_so_far_cm_s: float
-    class_so_far: LongPeriodClass
+    long_period_class_so_far: LongPeriodClass
     elapsed_s: float

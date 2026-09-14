@@ -53,7 +53,7 @@ for start in range(0, horizontal_gal.shape[0], 1000):
     print(
         f"  t={update.sample_count / sampling_rate_hz:6.1f} s  "
         f"Sva so far {update.max_sva_so_far_cm_s:8.4f} cm/s  "
-        f"class {update.class_so_far}"
+        f"class {update.long_period_class_so_far}"
     )
 # The estimator steps the published recurrence, which is also what the batch
 # calculation does under solver="recurrence" -- same arithmetic, not merely
