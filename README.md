@@ -1,5 +1,8 @@
 # pyshindo
 
+[![PyPI](https://img.shields.io/pypi/v/pyshindo)](https://pypi.org/project/pyshindo/)
+[![Python](https://img.shields.io/pypi/pyversions/pyshindo)](https://pypi.org/project/pyshindo/)
+[![License](https://img.shields.io/pypi/l/pyshindo)](https://github.com/aldichollow/pyshindo/blob/main/LICENSE)
 [![CI](https://github.com/aldichollow/pyshindo/actions/workflows/ci.yml/badge.svg)](https://github.com/aldichollow/pyshindo/actions/workflows/ci.yml)
 
 ## 概要
