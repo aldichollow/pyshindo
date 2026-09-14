@@ -36,30 +36,28 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
 
-Relevant real-time algorithms are associated with patent documents. Read [PATENTS.md](PATENTS.md) before distribution or operational use. The MIT license covers copyright in this source code and is not a patent-clearance opinion.
+Relevant real-time algorithms are associated with patent documents. Read [PATENTS.md](https://github.com/aldichollow/pyshindo/blob/main/PATENTS.md) before distribution or operational use. The MIT license covers copyright in this source code and is not a patent-clearance opinion.
 
 Separately: Japan's forecasting-business licence (気象業務法 Article 17) covers _predicting_ ground motion before it happens and announcing that prediction, which is a different activity from what this package does -- computing intensity or long-period class _after the fact_ from an already-recorded waveform ([overview, in Japanese](https://www.jma.go.jp/jma/kishou/minkan/kyoka.html)). Where the line falls in a given use case is not something this note can settle, so it is not legal advice.
 
 ## Installation
 
-Directly from GitHub:
+```bash
+python -m pip install pyshindo
+```
+
+The optional extras are `plot` for the Plotly figures and `obspy` for reading
+formats through ObsPy:
+
+```bash
+python -m pip install "pyshindo[plot,obspy]"
+```
+
+For the unreleased state of `main`, or from a local checkout:
 
 ```bash
 python -m pip install git+https://github.com/aldichollow/pyshindo.git
-```
-
-From a local checkout, editable:
-
-```bash
-python -m pip install -e .
-```
-
-Either way, add the optional extras -- `plot` for the Plotly figures, `obspy` for
-reading formats through ObsPy:
-
-```bash
-python -m pip install "pyshindo[plot,obspy] @ git+https://github.com/aldichollow/pyshindo.git"
-# or, from a checkout:
+# from a checkout, editable, with the extras:
 python -m pip install -e ".[plot,obspy]"
 ```
 
@@ -298,7 +296,7 @@ The ObsPy interoperability tests skip themselves when ObsPy is not installed.
 - Japan Meteorological Agency, "Calculation of instrumental seismic intensity."
 - Kunugi, Aoi, and Nakamura (2008), _A real-time processing method of seismic intensity_, DOI: 10.4294/zisin.60.243.
 - Kunugi, Aoi, and Nakamura (2013), _An improved approximation filter for the real-time calculation of seismic intensity_, DOI: 10.4294/zisin.65.223.
-- JP4229337B2 / JP5946067B2 / JP7681907B2 -- see [PATENTS.md](PATENTS.md).
+- JP4229337B2 / JP5946067B2 / JP7681907B2 -- see [PATENTS.md](https://github.com/aldichollow/pyshindo/blob/main/PATENTS.md).
 
 ---
 
