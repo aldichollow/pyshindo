@@ -88,6 +88,12 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          # Rehearsals are worth being able to repeat. TestPyPI refuses a
+          # version it already has, so without this a second run of the same
+          # version fails on the upload rather than on anything meaningful.
+          # Deliberately not set on the production job below: there, a version
+          # that already exists should stop the release loudly.
+          skip-existing: true
 
   pypi:
     needs: build
