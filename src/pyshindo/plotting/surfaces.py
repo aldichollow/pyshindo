@@ -358,7 +358,7 @@ def add_surface_layer(
 
         figure = continuous_value_map_figure(latitudes_deg, longitudes_deg, values,
                                               value_label="PGV [cm/s]")
-        add_surface_layer(figure, surface, cmin=0.0, cmax=30.0, colorbar_title="PGV [cm/s]")
+        add_surface_layer(figure, surface, cmin=0.0, cmax=30.0)
 
     Inserted with ``below="traces"`` by default, so station markers and
     their white halos stay drawn on top and remain the visually dominant
@@ -366,14 +366,16 @@ def add_surface_layer(
     replacement for them. Returns ``figure`` for chaining, but mutates it
     in place, the same as Plotly's own ``update_layout``/``add_trace``.
 
-    ``continuous_value_map_figure`` already draws its own colorbar for the
-    station markers. Passing ``colorbar_title`` here adds a second,
-    independent one -- Plotly does not know the two are related and will
-    place both at its own default position, where they overlap into
-    unreadable text. Either leave ``colorbar_title=None`` when the marker
-    colorbar already labels the same quantity, or pass an explicit
-    ``colorbar_x`` (Plotly's own default is approximately ``1.02``; try
-    ``1.15`` or higher) to move this one clear of it.
+    ``colorbar_title`` defaults to ``None`` -- no colorbar -- because a
+    figure built with :func:`~pyshindo.plotting.maps.continuous_value_map_figure`
+    already draws one for the markers, and the surface underneath them is
+    context, not a second reading of the same quantity to label separately.
+    Pass ``colorbar_title`` when the surface is shown with no marker map
+    alongside it (nothing else on the figure gives its scale); Plotly does
+    not know to avoid a second, unrelated colorbar's default position in
+    that case, so also pass ``colorbar_x`` (Plotly's own default is
+    approximately ``1.02``; try ``1.15`` or higher) if another one is
+    already there.
     """
     go, _, _ = require_plotly()
     rgba = render_surface_rgba(
