@@ -1,0 +1,29 @@
+{
+  "source": "Natural Earth 1:10m Cultural/Physical Vectors, land + minor_islands",
+  "license": "Public domain (https://www.naturalearthdata.com/about/terms-of-use/)",
+  "fetched_from": {
+    "land": {
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_land.geojson",
+      "sha256": "1ac90796408bc6ad6911d69448485d3c4dbf2190370080368a09976e1c9f7416"
+    },
+    "minor_islands": {
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_minor_islands.geojson",
+      "sha256": "8c933ca7a4760256bdc46408355706e39764b0fa01c160c28888b90b4faec29f"
+    }
+  },
+  "crop_bounds_deg": {
+    "west": 122.0,
+    "south": 19.0,
+    "east": 155.0,
+    "north": 47.0
+  },
+  "resolution_deg": 0.01,
+  "raster_shape": [
+    2800,
+    3300
+  ],
+  "land_fraction": 0.15029383116883116,
+  "generation_script": "scripts/build_natural_earth_japan.py",
+  "output_file": "natural_earth_japan_land.npz",
+  "output_sha256": "d467fe45b257fb5ae6c051336792f60bc54997eef25dc0bacd1080c9ebb2c08f"
+}

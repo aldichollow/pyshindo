@@ -64,7 +64,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-pyshindo = ["py.typed"]
+pyshindo = ["py.typed", "data/spatial/*.npz", "data/spatial/*.json"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
@@ -102,6 +102,13 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "obspy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Shapely is never a runtime or installed dependency of the package -- only
+# scripts/build_natural_earth_japan.py uses it, fetched ephemerally via
+# `uv run --with shapely`. See that script's module docstring.
+module = "shapely.*"
 ignore_missing_imports = true
 
 [tool.coverage.run]
