@@ -356,6 +356,12 @@ def continuous_value_map_figure(
     """
     go, _, _ = require_plotly()
     _validate_marker_size(marker_size)
+    if (cmin is None) != (cmax is None):
+        # Plotly only fixes the color range when both are set; passing just
+        # one is silently ignored (falls back to full auto-ranging), which
+        # would quietly discard the caller's explicit choice rather than
+        # honor half of it.
+        raise ValueError("cmin and cmax must be given together, or both left as None.")
     if cmin is not None and cmax is not None and cmin >= cmax:
         raise ValueError(f"cmin must be less than cmax; received {cmin}, {cmax}.")
     array = np.asarray(values, dtype=np.float64)

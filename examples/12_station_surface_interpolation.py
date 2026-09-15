@@ -354,6 +354,11 @@ pga_figure.show()
 # for sanity-checking the interpolation geometry itself but not usually the
 # presentation you want. This is a station interpolation surface, not an
 # estimated ground-motion field -- see the pyshindo.spatial module
-# docstring for what that means and does not mean.
+# docstring for what that means and does not mean. In particular, every
+# surface above is geometry only: distance and station density, nothing
+# about terrain, soil, or geology in between two stations. Two points a
+# short distance apart on the map can shake very differently in reality
+# (a ridge versus a sediment-filled valley, for instance) in a way no
+# amount of interpolation from surface stations alone can recover.
 
 # %%

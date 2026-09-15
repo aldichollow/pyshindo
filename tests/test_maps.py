@@ -164,6 +164,16 @@ def test_cmin_cmax_reject_cmin_not_less_than_cmax() -> None:
         continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmin=5.0, cmax=5.0)
 
 
+def test_cmin_cmax_reject_being_given_alone() -> None:
+    # Plotly silently ignores just one of cmin/cmax (falls back to full
+    # auto-range), so a caller who sets only one would have their explicit
+    # choice quietly discarded rather than honored.
+    with pytest.raises(ValueError, match="given together"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmin=0.0)
+    with pytest.raises(ValueError, match="given together"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmax=10.0)
+
+
 def test_cmin_cmax_reject_non_positive_values_under_log() -> None:
     with pytest.raises(ValueError, match="strictly positive"):
         continuous_value_map_figure(
