@@ -24,13 +24,14 @@ than the older, token-gated ``Scattermapbox``. The default basemap style,
 stay legible; pass ``map_style`` to any figure function for a different
 built-in style (for example ``"open-street-map"`` for the original colorful
 tiles, or ``"carto-positron-nolabels"`` for an even quieter background).
-Markers get a white halo -- ``Scattermap`` markers have no ``line`` (border)
-property, unlike ``Scatter``, so the halo is a second, larger, white-filled
-trace drawn immediately behind each marker trace instead.
+Markers get a dark-gray halo -- ``Scattermap`` markers have no ``line``
+(border) property, unlike ``Scatter``, so the halo is a second, larger,
+gray-filled trace drawn immediately behind each marker trace instead.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any, Final
 
@@ -41,9 +42,9 @@ from ..long_period.scale import LongPeriodClass
 from ..scale import IntensityScale
 from .theme import JMA_INTENSITY_COLORS, LONG_PERIOD_CLASS_COLORS, require_plotly
 
-_MARKER_SIZE: Final = 11
-_HALO_SIZE_MARGIN: Final = 5
-_HALO_COLOR: Final = "#FFFFFF"
+_MARKER_SIZE: Final = 9
+_HALO_SIZE_MARGIN: Final = 3
+_HALO_COLOR: Final = "#404040"
 _FONT_FAMILY: Final = "Helvetica Neue, Helvetica, Arial, Noto Sans JP, sans-serif"
 _DEFAULT_ZOOM: Final = 5.0
 _ZOOM_MARGIN_DEG: Final = 0.3
@@ -114,7 +115,7 @@ def _halo_trace(
     marker_size: float,
     legendgroup: str | None = None,
 ) -> Any:
-    """A white, oversized, non-interactive marker trace drawn behind the real one.
+    """A dark-gray, oversized, non-interactive marker trace drawn behind the real one.
 
     Stands in for the border ``Scattermap`` markers cannot have (unlike
     ``Scatter``, they have no ``marker.line``), so colored markers read as
@@ -209,7 +210,7 @@ def intensity_map_figure(
 
     ``map_style`` selects the basemap; see the module docstring.
     ``marker_size`` shrinks markers for a dense map of many stations, or
-    grows them for a sparse one; the white halo scales along with it.
+    grows them for a sparse one; the gray halo scales along with it.
     """
     scales = [
         value if isinstance(value, IntensityScale) else IntensityScale(value)
@@ -247,7 +248,7 @@ def long_period_class_map_figure(
 
     ``map_style`` selects the basemap; see the module docstring.
     ``marker_size`` shrinks markers for a dense map of many stations, or
-    grows them for a sparse one; the white halo scales along with it.
+    grows them for a sparse one; the gray halo scales along with it.
     """
     resolved = [
         value if isinstance(value, LongPeriodClass) else LongPeriodClass(value)
@@ -267,6 +268,38 @@ def long_period_class_map_figure(
     )
 
 
+def _log_color_values(
+    value_label: str, array: npt.NDArray[np.float64]
+) -> tuple[npt.NDArray[np.float64], dict[str, Any]]:
+    """Return log-space marker colors plus a colorbar labeled in real units.
+
+    Plotly has no native log color axis for markers the way it does for an
+    x/y axis, so the color channel is pre-transformed here and the colorbar
+    ticks are placed back in real units afterward -- a handful of
+    geometrically spaced values across the data's own range, not necessarily
+    round numbers, since the range itself is caller-determined and may span
+    less than one decade.
+    """
+    if array.size and np.any(array <= 0.0):
+        raise ValueError(
+            "color_transform='log' requires every value to be strictly positive. "
+            "PGA, PGV, SI, and Sva are non-negative by definition but a reading of "
+            "exactly zero has no logarithm; use color_transform='identity', or "
+            "exclude that station before plotting."
+        )
+    color_values = np.log(array)
+    if array.size == 0:
+        return color_values, {"title": {"text": value_label}}
+    low, high = float(array.min()), float(array.max())
+    tick_values = [low] if low == high else np.geomspace(low, high, 6).tolist()
+    colorbar = {
+        "title": {"text": value_label},
+        "tickvals": [math.log(value) for value in tick_values],
+        "ticktext": [f"{value:.3g}" for value in tick_values],
+    }
+    return color_values, colorbar
+
+
 def continuous_value_map_figure(
     latitudes_deg: npt.ArrayLike,
     longitudes_deg: npt.ArrayLike,
@@ -275,6 +308,7 @@ def continuous_value_map_figure(
     value_label: str,
     labels: Sequence[str] | None = None,
     colorscale: str = "YlOrRd",
+    color_transform: str = "identity",
     title: str = "Station distribution",
     map_style: str = _DEFAULT_MAP_STYLE,
     marker_size: float = _MARKER_SIZE,
@@ -286,9 +320,21 @@ def continuous_value_map_figure(
     SI value or PGV, so this is one trace on a continuous colorscale with its
     own colorbar rather than several discrete-class traces.
 
+    ``color_transform`` chooses what space marker color is mapped in:
+    ``"identity"`` (default, unchanged behavior) colors directly by
+    ``values``; ``"log"`` colors by ``log(values)`` instead, restoring
+    real-unit tick labels on the colorbar afterward. Never applied
+    silently -- this is the same explicit-only convention
+    :attr:`pyshindo.spatial.ValueTransform` uses for interpolation, extended
+    to display: ground-motion amplitude is often closer to log-normal than
+    normal, so a linear color scale compresses most stations into one end of
+    the colorbar, but that is a real choice for the caller to make, not a
+    default this function should guess. Every value must be strictly
+    positive under ``"log"``.
+
     ``map_style`` selects the basemap; see the module docstring.
     ``marker_size`` shrinks markers for a dense map of many stations, or
-    grows them for a sparse one; the white halo scales along with it.
+    grows them for a sparse one; the gray halo scales along with it.
     """
     go, _, _ = require_plotly()
     _validate_marker_size(marker_size)
@@ -297,6 +343,15 @@ def continuous_value_map_figure(
         raise ValueError("values must be one-dimensional.")
     lat, lon = _validate_coordinates(latitudes_deg, longitudes_deg, array.size)
     resolved_labels = _resolve_labels(labels, array.size)
+
+    if color_transform == "identity":
+        color_values, colorbar = array, {"title": {"text": value_label}}
+    elif color_transform == "log":
+        color_values, colorbar = _log_color_values(value_label, array)
+    else:
+        raise ValueError(
+            f"Unsupported color_transform {color_transform!r}; choose 'identity' or 'log'."
+        )
 
     figure = go.Figure()
     figure.add_trace(_halo_trace(go, lat, lon, marker_size=marker_size))
@@ -307,14 +362,15 @@ def continuous_value_map_figure(
             mode="markers",
             marker={
                 "size": marker_size,
-                "color": array,
+                "color": color_values,
                 "colorscale": colorscale,
                 "showscale": True,
-                "colorbar": {"title": {"text": value_label}},
+                "colorbar": colorbar,
                 "opacity": 0.95,
             },
             text=resolved_labels,
-            hovertemplate=f"%{{text}}<br>{value_label}: %{{marker.color:.4g}}<br>"
+            customdata=array,
+            hovertemplate=f"%{{text}}<br>{value_label}: %{{customdata:.4g}}<br>"
             "%{lat:.4f}, %{lon:.4f}<extra></extra>",
             showlegend=False,
         )
