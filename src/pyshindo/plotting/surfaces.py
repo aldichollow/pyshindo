@@ -41,7 +41,7 @@ import importlib.resources
 import math
 import struct
 import zlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Final
@@ -54,6 +54,11 @@ from .theme import require_plotly
 
 type FloatArray = npt.NDArray[np.float64]
 type RGBAArray = npt.NDArray[np.uint8]
+type ColorScale = str | Sequence[Any]
+"""A named Plotly colorscale, or an explicit one: a list of colors, or a
+list of ``[position, color]`` pairs -- Plotly's own two colorscale forms
+(see ``plotly.colors.sample_colorscale``), for a discretized or otherwise
+custom scale a name cannot express."""
 
 _DEFAULT_LAND: Final = "natural_earth_japan_10m"
 
@@ -134,19 +139,43 @@ def _visible_mask(surface: InterpolatedSurface, land: str | None) -> npt.NDArray
 # --------------------------------------------------------------------------
 
 
+def _freeze_colorscale(colorscale: ColorScale) -> str | tuple[Any, ...]:
+    """Return a hashable equivalent of ``colorscale``, for use as a cache key.
+
+    A named colorscale is already hashable. An explicit one is a list --
+    unhashable, and therefore unusable as an ``lru_cache`` key directly --
+    so each stop is frozen into a tuple (a bare color string stays a string,
+    a ``[position, color]`` pair becomes a 2-tuple) and the whole thing
+    becomes a tuple of stops.
+    """
+    if isinstance(colorscale, str):
+        return colorscale
+    return tuple(
+        stop if isinstance(stop, str) else tuple(stop) for stop in colorscale
+    )
+
+
 @lru_cache(maxsize=32)
-def _colorscale_lookup_table(colorscale: str, steps: int = 256) -> RGBAArray:
-    """Sample a named Plotly colorscale into a fixed-size RGB lookup table.
+def _colorscale_lookup_table(colorscale: str | tuple[Any, ...], steps: int = 256) -> RGBAArray:
+    """Sample a Plotly colorscale into a fixed-size RGB lookup table.
 
     Cached because building one costs a handful of milliseconds and every
     cell in a render reuses the same table -- a per-cell colorscale sample
-    would be both slower and pointless.
+    would be both slower and pointless. ``colorscale`` must already be in
+    the frozen (hashable) form :func:`_freeze_colorscale` returns; it is
+    converted back to plain lists here, since that is the form
+    ``plotly.colors.sample_colorscale`` itself expects.
     """
     require_plotly()  # raises the package's own friendly message if Plotly is missing
     import plotly.colors as plotly_colors
 
+    resolved: str | list[Any] = (
+        colorscale
+        if isinstance(colorscale, str)
+        else [list(stop) if isinstance(stop, tuple) else stop for stop in colorscale]
+    )
     samples = plotly_colors.sample_colorscale(
-        colorscale, np.linspace(0.0, 1.0, steps).tolist(), colortype="tuple"
+        resolved, np.linspace(0.0, 1.0, steps).tolist(), colortype="tuple"
     )
     return np.round(np.array(samples, dtype=np.float64) * 255.0).astype(np.uint8)
 
@@ -154,7 +183,7 @@ def _colorscale_lookup_table(colorscale: str, steps: int = 256) -> RGBAArray:
 def render_surface_rgba(
     surface: InterpolatedSurface,
     *,
-    colorscale: str = "YlOrRd",
+    colorscale: ColorScale = "YlOrRd",
     cmin: float,
     cmax: float,
     color_transform: str = "identity",
@@ -204,7 +233,7 @@ def render_surface_rgba(
             f"Unsupported color_transform {color_transform!r}; choose 'identity' or 'log'."
         )
 
-    lookup_table = _colorscale_lookup_table(colorscale)
+    lookup_table = _colorscale_lookup_table(_freeze_colorscale(colorscale))
     normalized = np.full(display.shape, np.nan)
     finite = np.isfinite(display)
     normalized[finite] = np.clip((display[finite] - low) / (high - low), 0.0, 1.0)
@@ -340,7 +369,7 @@ def add_surface_layer(
     figure: Any,
     surface: InterpolatedSurface,
     *,
-    colorscale: str = "YlOrRd",
+    colorscale: ColorScale = "YlOrRd",
     cmin: float,
     cmax: float,
     color_transform: str = "identity",

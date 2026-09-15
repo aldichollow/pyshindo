@@ -196,6 +196,35 @@ def test_render_surface_rgba_clips_out_of_range_values_to_boundary_color() -> No
         assert np.all(narrow_range[above_range][:, :3] == top_color)
 
 
+def test_render_surface_rgba_accepts_a_custom_colorscale() -> None:
+    # A named colorscale (the default) is hashable and always worked; a
+    # custom one -- Plotly's own [position, color] list form, used to build
+    # a discretized/banded scale -- is not, and previously crashed inside
+    # the lru_cache-backed lookup-table builder.
+    surface = _continuous_surface()
+    custom = [[0.0, "rgb(255,255,255)"], [0.5, "rgb(255,255,0)"], [1.0, "rgb(128,0,0)"]]
+    rgba = render_surface_rgba(surface, colorscale=custom, cmin=0.0, cmax=100.0, land=None)
+    assert rgba.shape == (*surface.grid.shape, 4)
+
+    # A plain list of colors (no explicit positions) is Plotly's other
+    # accepted form.
+    rgba_plain = render_surface_rgba(
+        surface,
+        colorscale=["rgb(0,0,255)", "rgb(255,255,255)", "rgb(255,0,0)"],
+        cmin=0.0,
+        cmax=100.0,
+        land=None,
+    )
+    assert rgba_plain.shape == (*surface.grid.shape, 4)
+
+    # The tuple form (already hashable) must render identically to the
+    # equivalent list, since both are frozen to the same cache key.
+    rgba_tuple = render_surface_rgba(
+        surface, colorscale=tuple(tuple(stop) for stop in custom), cmin=0.0, cmax=100.0, land=None
+    )
+    np.testing.assert_array_equal(rgba, rgba_tuple)
+
+
 def test_render_surface_rgba_rejects_invalid_color_range_or_opacity() -> None:
     surface = _continuous_surface()
     with pytest.raises(ValueError, match="cmin"):
