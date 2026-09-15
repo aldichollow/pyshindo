@@ -339,6 +339,25 @@ ObsPyの `Stream` を本パッケージが扱う配列へ変換するだけの�
 
 `apply_obspy_calibration(stream)` は、K-NET/KiK-netなど一部のObsPyリーダーが`trace.data`を生カウント値のまま残し、物理量換算係数を`trace.stats.calib`に別途持たせている場合に、それを掛けて`calib`を1.0に戻したコピーを返します。`from_obspy_stream`はデータが既に物理量であることを前提とするため、その手前で通してください。
 
+## `pyshindo.spatial`(観測点間の空間補間、追加インストール不要)
+
+```python
+from pyshindo.spatial import (
+    GeographicBounds, SurfaceGrid, IDWConfig, LinearConfig, NearestConfig,
+    interpolate_surface, build_interpolation_plan,
+)
+
+grid = SurfaceGrid.from_bounds(GeographicBounds(west_deg, south_deg, east_deg, north_deg),
+                                approximate_resolution_km=5.0)
+surface = interpolate_surface(latitudes_deg, longitudes_deg, values, grid=grid,
+                               method="idw", config=IDWConfig(neighbors=8, max_distance_km=...),
+                               transform="identity", metric_name="pga", unit="gal")
+surface.values          # grid.shape、支持範囲外はNaN
+surface.support_mask    # 補間の根拠となる観測点があったセルだけTrue
+```
+
+観測点の値をNumPy/SciPyだけで空間補間します(Plotly等は不要)。`method`は`"idw"`(局所IDW)・`"linear"`(Delaunay三角形分割上の線形補間)・`"nearest"`(最近傍)。階級・色は補間せず、連続量(計測震度なら`intensity_raw`、長周期地震動なら`max_sva_cm_s`)を補間してから分類してください。階級しか値がない場合は`"nearest"`のみを使います。`config`の探索半径は既定を持たず、`allow_extrapolation=True`を明示しない限り必須です。使用例は[`examples/12_station_surface_interpolation.py`](../examples/12_station_surface_interpolation.py)。
+
 ## `pyshindo.plotting`(可視化、要 `pip install pyshindo[plot]`)
 
 ```python
