@@ -153,13 +153,23 @@ def build_linear_plan(
         # ndim barycentric coordinates are Tinv @ (point - r); the final
         # coordinate is 1 minus their sum. This is SciPy's own documented
         # recipe for barycentric coordinates, reused here rather than calling
-        # LinearNDInterpolator per frame.
+        # LinearNDInterpolator per frame. Qhull fills transform with NaN for a
+        # degenerate (zero-area) simplex; such a cell is excluded from
+        # support_mask below rather than silently interpolating from NaN
+        # weights, since points inside a real, non-degenerate hull should
+        # never land in one.
         affine = triangulation.transform[selected]
         offset = grid_xy[rows] - affine[:, 2, :]
         first_two = np.einsum("nij,nj->ni", affine[:, :2, :], offset)
         weight[rows, :2] = first_two
         weight[rows, 2] = 1.0 - first_two.sum(axis=1)
         vertex_index[rows] = triangulation.simplices[selected]
+        degenerate = ~np.all(np.isfinite(weight[rows]), axis=1)
+        if np.any(degenerate):
+            degenerate_rows = rows[degenerate]
+            support_mask[degenerate_rows] = False
+            weight[degenerate_rows] = 0.0
+            vertex_index[degenerate_rows] = 0
 
     tree = cKDTree(lonlat_to_unit_xyz(lon, lat), copy_data=True)
     chord, _ = tree.query(lonlat_to_unit_xyz(grid_lon, grid_lat), k=1)

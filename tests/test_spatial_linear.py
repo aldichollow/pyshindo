@@ -68,6 +68,39 @@ def test_linear_is_undefined_outside_the_convex_hull() -> None:
     assert np.all(surface.neighbor_count[surface.support_mask] == 3)
 
 
+def test_linear_excludes_degenerate_delaunay_simplices_from_support(monkeypatch) -> None:
+    # SciPy fills scipy.spatial.Delaunay.transform with NaN for a simplex it
+    # could not invert (zero or near-zero area). Reproducing that from real
+    # station coordinates is numerically fragile -- it depends on exact
+    # floating-point cancellation during triangulation -- so this test
+    # substitutes a fake triangulation with one deliberately degenerate
+    # simplex covering the whole grid, and checks build_linear_plan excludes
+    # it from support rather than leaking NaN into a "supported" cell.
+    import pyshindo.spatial.linear as linear_module
+
+    class _FakeTriangulation:
+        def __init__(self, points: np.ndarray) -> None:
+            self.points = points
+            self.simplices = np.array([[0, 1, 2]])
+            self.transform = np.full((1, 3, 2), np.nan)
+
+        def find_simplex(self, query: np.ndarray) -> np.ndarray:
+            return np.zeros(len(query), dtype=np.intp)  # every cell "inside" simplex 0
+
+    monkeypatch.setattr(linear_module, "Delaunay", _FakeTriangulation)
+
+    bounds = _bounds()
+    station_lat = np.array([35.0, 36.0, 35.5])
+    station_lon = np.array([135.0, 135.0, 136.0])
+    grid = SurfaceGrid.from_bounds(bounds, shape=(4, 4))
+
+    plan = build_linear_plan(station_lat, station_lon, grid=grid, config=LinearConfig())
+    assert not plan.support_mask.any()
+    surface = plan.interpolate(np.array([1.0, 2.0, 3.0]))
+    assert not np.any(surface.support_mask)
+    assert np.all(np.isnan(surface.values))
+
+
 def test_linear_rejects_collinear_stations() -> None:
     bounds = _bounds()
     station_lat = np.array([35.0, 36.0, 37.0])
