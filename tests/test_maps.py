@@ -131,6 +131,46 @@ def test_color_transform_identity_is_unaffected_by_the_new_parameter() -> None:
     assert figure.data[-1].marker.colorbar.tickvals is None
 
 
+def test_cmin_cmax_default_to_none_and_auto_range() -> None:
+    figure = continuous_value_map_figure(LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x")
+    assert figure.data[-1].marker.cmin is None
+    assert figure.data[-1].marker.cmax is None
+
+
+def test_cmin_cmax_fix_the_marker_color_range_under_identity() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x", cmin=0.0, cmax=100.0
+    )
+    assert figure.data[-1].marker.cmin == 0.0
+    assert figure.data[-1].marker.cmax == 100.0
+
+
+def test_cmin_cmax_are_log_transformed_to_match_the_color_values_under_log() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x", color_transform="log",
+        cmin=0.5, cmax=1000.0,
+    )
+    marker = figure.data[-1].marker
+    assert marker.cmin == pytest.approx(np.log(0.5))
+    assert marker.cmax == pytest.approx(np.log(1000.0))
+    # The colorbar ticks come from the explicit range, not the data's own.
+    real_ticks = np.array(marker.colorbar.ticktext, dtype=float)
+    assert real_ticks.min() == pytest.approx(0.5, rel=1e-2)
+    assert real_ticks.max() == pytest.approx(1000.0, rel=1e-2)
+
+
+def test_cmin_cmax_reject_cmin_not_less_than_cmax() -> None:
+    with pytest.raises(ValueError, match="cmin must be less than cmax"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmin=5.0, cmax=5.0)
+
+
+def test_cmin_cmax_reject_non_positive_values_under_log() -> None:
+    with pytest.raises(ValueError, match="strictly positive"):
+        continuous_value_map_figure(
+            LAT[:1], LON[:1], [1.0], value_label="x", color_transform="log", cmin=0.0, cmax=10.0
+        )
+
+
 def test_labels_appear_in_hover_text() -> None:
     figure = continuous_value_map_figure(
         LAT[:2], LON[:2], [1.0, 2.0], value_label="x", labels=["Station A", "Station B"]

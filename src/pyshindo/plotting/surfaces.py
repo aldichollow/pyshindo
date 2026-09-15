@@ -187,7 +187,7 @@ def render_surface_rgba(
     cmin: float,
     cmax: float,
     color_transform: str = "identity",
-    opacity: float = 0.72,
+    opacity: float = 0.6,
     land: str | None = _DEFAULT_LAND,
 ) -> RGBAArray:
     """Render a continuous surface to an ``(ny, nx, 4)`` uint8 RGBA array.
@@ -250,7 +250,7 @@ def render_class_surface_rgba(
     surface: InterpolatedSurface,
     *,
     colors: Mapping[float, str],
-    opacity: float = 0.72,
+    opacity: float = 0.6,
     land: str | None = _DEFAULT_LAND,
 ) -> RGBAArray:
     """Render an already-classified surface to an ``(ny, nx, 4)`` uint8 RGBA array.
@@ -373,7 +373,7 @@ def add_surface_layer(
     cmin: float,
     cmax: float,
     color_transform: str = "identity",
-    opacity: float = 0.72,
+    opacity: float = 0.6,
     land: str | None = _DEFAULT_LAND,
     colorbar_title: str | None = None,
     colorbar_x: float | None = None,
@@ -447,7 +447,7 @@ def add_class_surface_layer(
     surface: InterpolatedSurface,
     *,
     colors: Mapping[float, str],
-    opacity: float = 0.72,
+    opacity: float = 0.6,
     land: str | None = _DEFAULT_LAND,
     below: str = "traces",
 ) -> Any:

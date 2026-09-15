@@ -52,6 +52,21 @@ max_rows = fetch("max.csv")
 level_rows = fetch("level.csv")
 
 
+# %% The grid only needs to cover the stations actually being interpolated,
+# with a little padding so the edge stations are not sitting right on the
+# boundary -- built the same way for every metric below.
+def grid_for_stations(
+    lat: np.ndarray, lon: np.ndarray, *, resolution_km: float
+) -> SurfaceGrid:
+    bounds = GeographicBounds(
+        west_deg=float(lon.min()) - 0.3,
+        south_deg=float(lat.min()) - 0.3,
+        east_deg=float(lon.max()) + 0.3,
+        north_deg=float(lat.max()) + 0.3,
+    )
+    return SurfaceGrid.from_bounds(bounds, approximate_resolution_km=resolution_km)
+
+
 # %% A discretized colorscale -- hard color bands at fixed breakpoints,
 # instead of a smooth gradient -- for rendering a continuous surface so it
 # reads like a classed map. Built from Plotly's own colorscale form, a list
@@ -94,16 +109,7 @@ pgv_rows = [row for row in max_rows if row[12].strip()]
 pgv_lat = np.array([float(row[2]) for row in pgv_rows])
 pgv_lon = np.array([float(row[3]) for row in pgv_rows])
 pgv_value = np.array([float(row[12]) for row in pgv_rows])
-
-# The grid only needs to cover the stations actually being interpolated, with a
-# little padding so the edge stations are not sitting right on the boundary.
-pgv_bounds = GeographicBounds(
-    west_deg=float(pgv_lon.min()) - 0.3,
-    south_deg=float(pgv_lat.min()) - 0.3,
-    east_deg=float(pgv_lon.max()) + 0.3,
-    north_deg=float(pgv_lat.max()) + 0.3,
-)
-pgv_grid = SurfaceGrid.from_bounds(pgv_bounds, approximate_resolution_km=5.0)
+pgv_grid = grid_for_stations(pgv_lat, pgv_lon, resolution_km=5.0)
 
 pgv_surface = interpolate_surface(
     pgv_lat,
@@ -188,14 +194,7 @@ for waveform_path in sorted(waveform_dir.rglob("*_acc.csv")):
 intensity_lat_array = np.array(intensity_lat)
 intensity_lon_array = np.array(intensity_lon)
 intensity_value_array = np.array(intensity_value)
-
-intensity_bounds = GeographicBounds(
-    west_deg=float(intensity_lon_array.min()) - 0.3,
-    south_deg=float(intensity_lat_array.min()) - 0.3,
-    east_deg=float(intensity_lon_array.max()) + 0.3,
-    north_deg=float(intensity_lat_array.max()) + 0.3,
-)
-intensity_grid = SurfaceGrid.from_bounds(intensity_bounds, approximate_resolution_km=3.0)
+intensity_grid = grid_for_stations(intensity_lat_array, intensity_lon_array, resolution_km=3.0)
 intensity_surface = interpolate_surface(
     intensity_lat_array,
     intensity_lon_array,
@@ -256,14 +255,7 @@ class_lat = np.array([float(row[13]) for row in level_rows])
 class_lon = np.array([float(row[14]) for row in level_rows])
 class_value = np.array([float(row[5]) for row in level_rows])
 class_names = [row[1] for row in level_rows]
-
-class_bounds = GeographicBounds(
-    west_deg=float(class_lon.min()) - 0.3,
-    south_deg=float(class_lat.min()) - 0.3,
-    east_deg=float(class_lon.max()) + 0.3,
-    north_deg=float(class_lat.max()) + 0.3,
-)
-class_grid = SurfaceGrid.from_bounds(class_bounds, approximate_resolution_km=5.0)
+class_grid = grid_for_stations(class_lat, class_lon, resolution_km=5.0)
 class_surface = interpolate_surface(
     class_lat,
     class_lon,
@@ -301,14 +293,7 @@ pga_lat = np.array([float(row[2]) for row in pga_rows])
 pga_lon = np.array([float(row[3]) for row in pga_rows])
 pga_value = np.array([float(row[8]) for row in pga_rows])
 pga_labels = [row[1] for row in pga_rows]
-
-pga_bounds = GeographicBounds(
-    west_deg=float(pga_lon.min()) - 0.3,
-    south_deg=float(pga_lat.min()) - 0.3,
-    east_deg=float(pga_lon.max()) + 0.3,
-    north_deg=float(pga_lat.max()) + 0.3,
-)
-pga_grid = SurfaceGrid.from_bounds(pga_bounds, approximate_resolution_km=3.0)
+pga_grid = grid_for_stations(pga_lat, pga_lon, resolution_km=3.0)
 pga_surface = interpolate_surface(
     pga_lat,
     pga_lon,
@@ -345,6 +330,12 @@ pga_figure = continuous_value_map_figure(
     labels=pga_labels,
     colorscale=pga_colorscale,
     color_transform="log",
+    # Left as None (the default), the markers would auto-range to this
+    # event's own PGA min/max instead of the fixed 0.05-1000 range the
+    # surface below uses -- matching cmin/cmax explicitly here is what
+    # actually makes the marker fill and the surface color agree.
+    cmin=0.05,
+    cmax=1000.0,
     title=f"Interpolated PGA surface (land only), event {EVENT_ID}",
 )
 add_surface_layer(

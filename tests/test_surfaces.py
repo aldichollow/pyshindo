@@ -163,7 +163,7 @@ def test_render_surface_rgba_has_correct_shape_and_alpha_channel() -> None:
     assert rgba.dtype == np.uint8
     # Alpha must be 0 exactly where unsupported, and the configured opacity
     # exactly where supported (land=None, so support alone decides visibility).
-    expected_alpha = np.where(surface.support_mask, round(255 * 0.72), 0)
+    expected_alpha = np.where(surface.support_mask, round(255 * 0.6), 0)
     np.testing.assert_array_equal(rgba[..., 3], expected_alpha)
 
 

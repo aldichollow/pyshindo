@@ -269,16 +269,20 @@ def long_period_class_map_figure(
 
 
 def _log_color_values(
-    value_label: str, array: npt.NDArray[np.float64]
+    value_label: str,
+    array: npt.NDArray[np.float64],
+    *,
+    cmin: float | None,
+    cmax: float | None,
 ) -> tuple[npt.NDArray[np.float64], dict[str, Any]]:
     """Return log-space marker colors plus a colorbar labeled in real units.
 
     Plotly has no native log color axis for markers the way it does for an
     x/y axis, so the color channel is pre-transformed here and the colorbar
     ticks are placed back in real units afterward -- a handful of
-    geometrically spaced values across the data's own range, not necessarily
-    round numbers, since the range itself is caller-determined and may span
-    less than one decade.
+    geometrically spaced values across the *displayed* range (``cmin``/
+    ``cmax`` if given, the data's own min/max otherwise), not necessarily
+    round numbers, since that range may span less than one decade.
     """
     if array.size and np.any(array <= 0.0):
         raise ValueError(
@@ -287,10 +291,13 @@ def _log_color_values(
             "exactly zero has no logarithm; use color_transform='identity', or "
             "exclude that station before plotting."
         )
+    if (cmin is not None and cmin <= 0.0) or (cmax is not None and cmax <= 0.0):
+        raise ValueError("cmin and cmax must be strictly positive under color_transform='log'.")
     color_values = np.log(array)
-    if array.size == 0:
+    low = cmin if cmin is not None else (float(array.min()) if array.size else None)
+    high = cmax if cmax is not None else (float(array.max()) if array.size else None)
+    if low is None or high is None:
         return color_values, {"title": {"text": value_label}}
-    low, high = float(array.min()), float(array.max())
     tick_values = [low] if low == high else np.geomspace(low, high, 6).tolist()
     colorbar = {
         "title": {"text": value_label},
@@ -309,6 +316,8 @@ def continuous_value_map_figure(
     labels: Sequence[str] | None = None,
     colorscale: str = "YlOrRd",
     color_transform: str = "identity",
+    cmin: float | None = None,
+    cmax: float | None = None,
     title: str = "Station distribution",
     map_style: str = _DEFAULT_MAP_STYLE,
     marker_size: float = _MARKER_SIZE,
@@ -332,12 +341,23 @@ def continuous_value_map_figure(
     default this function should guess. Every value must be strictly
     positive under ``"log"``.
 
+    ``cmin``/``cmax`` left as ``None`` (default) auto-range to ``values``'
+    own min/max, which is fine for a standalone map. Pass them explicitly
+    -- in real units, even under ``color_transform="log"`` -- to fix the
+    color range instead, the same way
+    :func:`~pyshindo.plotting.surfaces.add_surface_layer`'s ``cmin``/``cmax``
+    have no default at all: composing these markers with a surface layer
+    built from the same colorscale needs both given the *same* explicit
+    range, or the two will not agree about what a color means.
+
     ``map_style`` selects the basemap; see the module docstring.
     ``marker_size`` shrinks markers for a dense map of many stations, or
     grows them for a sparse one; the gray halo scales along with it.
     """
     go, _, _ = require_plotly()
     _validate_marker_size(marker_size)
+    if cmin is not None and cmax is not None and cmin >= cmax:
+        raise ValueError(f"cmin must be less than cmax; received {cmin}, {cmax}.")
     array = np.asarray(values, dtype=np.float64)
     if array.ndim != 1:
         raise ValueError("values must be one-dimensional.")
@@ -346,12 +366,28 @@ def continuous_value_map_figure(
 
     if color_transform == "identity":
         color_values, colorbar = array, {"title": {"text": value_label}}
+        marker_cmin, marker_cmax = cmin, cmax
     elif color_transform == "log":
-        color_values, colorbar = _log_color_values(value_label, array)
+        color_values, colorbar = _log_color_values(value_label, array, cmin=cmin, cmax=cmax)
+        marker_cmin = math.log(cmin) if cmin is not None else None
+        marker_cmax = math.log(cmax) if cmax is not None else None
     else:
         raise ValueError(
             f"Unsupported color_transform {color_transform!r}; choose 'identity' or 'log'."
         )
+
+    marker: dict[str, Any] = {
+        "size": marker_size,
+        "color": color_values,
+        "colorscale": colorscale,
+        "showscale": True,
+        "colorbar": colorbar,
+        "opacity": 0.95,
+    }
+    if marker_cmin is not None:
+        marker["cmin"] = marker_cmin
+    if marker_cmax is not None:
+        marker["cmax"] = marker_cmax
 
     figure = go.Figure()
     figure.add_trace(_halo_trace(go, lat, lon, marker_size=marker_size))
@@ -360,14 +396,7 @@ def continuous_value_map_figure(
             lat=lat,
             lon=lon,
             mode="markers",
-            marker={
-                "size": marker_size,
-                "color": color_values,
-                "colorscale": colorscale,
-                "showscale": True,
-                "colorbar": colorbar,
-                "opacity": 0.95,
-            },
+            marker=marker,
             text=resolved_labels,
             customdata=array,
             hovertemplate=f"%{{text}}<br>{value_label}: %{{customdata:.4g}}<br>"
