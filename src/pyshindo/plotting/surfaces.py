@@ -103,13 +103,23 @@ def land_mask_for_grid(
     detail the raster does not have; see
     ``scripts/build_natural_earth_japan.py`` if sharper detail is ever
     needed for a specific use case.
+
+    A cell outside the raster's own coverage (see its provenance JSON --
+    Japan and its outlying territory, plus margin) is treated as not land,
+    rather than reusing whichever edge cell happens to be nearest: nothing
+    about ``GeographicBounds`` restricts a caller to Japan, and silently
+    answering with the wrong region's coastline would be worse than
+    answering "not land" plainly.
     """
     raster = _load_land_raster(land)
     column = np.round((grid.longitudes_deg - raster.west_deg) / raster.resolution_deg - 0.5)
     row = np.round((grid.latitudes_deg - raster.south_deg) / raster.resolution_deg - 0.5)
+    column_in_bounds = (column >= 0) & (column < raster.mask.shape[1])
+    row_in_bounds = (row >= 0) & (row < raster.mask.shape[0])
     column_index = np.clip(column.astype(np.intp), 0, raster.mask.shape[1] - 1)
     row_index = np.clip(row.astype(np.intp), 0, raster.mask.shape[0] - 1)
-    return raster.mask[np.ix_(row_index, column_index)]
+    land_lookup = raster.mask[np.ix_(row_index, column_index)]
+    return land_lookup & row_in_bounds[:, None] & column_in_bounds[None, :]
 
 
 def _visible_mask(surface: InterpolatedSurface, land: str | None) -> npt.NDArray[np.bool_]:
@@ -337,6 +347,7 @@ def add_surface_layer(
     opacity: float = 0.72,
     land: str | None = _DEFAULT_LAND,
     colorbar_title: str | None = None,
+    colorbar_x: float | None = None,
     below: str = "traces",
 ) -> Any:
     """Add a continuous surface to a map figure as an image layer, in place.
@@ -354,6 +365,15 @@ def add_surface_layer(
     layer; the interpolated surface is context underneath them, not a
     replacement for them. Returns ``figure`` for chaining, but mutates it
     in place, the same as Plotly's own ``update_layout``/``add_trace``.
+
+    ``continuous_value_map_figure`` already draws its own colorbar for the
+    station markers. Passing ``colorbar_title`` here adds a second,
+    independent one -- Plotly does not know the two are related and will
+    place both at its own default position, where they overlap into
+    unreadable text. Either leave ``colorbar_title=None`` when the marker
+    colorbar already labels the same quantity, or pass an explicit
+    ``colorbar_x`` (Plotly's own default is approximately ``1.02``; try
+    ``1.15`` or higher) to move this one clear of it.
     """
     go, _, _ = require_plotly()
     rgba = render_surface_rgba(
@@ -382,7 +402,7 @@ def add_surface_layer(
                     "cmax": cmax,
                     "colorscale": colorscale,
                     "showscale": True,
-                    "colorbar": {"title": {"text": colorbar_title}},
+                    "colorbar": {"title": {"text": colorbar_title}, "x": colorbar_x},
                 },
                 hoverinfo="skip",
                 showlegend=False,

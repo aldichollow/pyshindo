@@ -83,6 +83,13 @@ add_surface_layer(
     cmin=0.0,
     cmax=float(pgv_value.max()),
     colorbar_title="Interpolated PGV [cm/s]",
+    # continuous_value_map_figure already drew a colorbar for the markers
+    # (auto-ranged to their own min/max); this one is fixed at 0-based
+    # range instead, so the two are worth showing side by side rather than
+    # collapsing into one -- colorbar_x moves this one clear of the first,
+    # which otherwise land on top of each other at Plotly's shared default
+    # position. See add_surface_layer's docstring.
+    colorbar_x=1.15,
 )
 figure.show()
 

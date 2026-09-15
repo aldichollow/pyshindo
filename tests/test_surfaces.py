@@ -134,6 +134,17 @@ def test_land_mask_identifies_known_land_and_sea_points() -> None:
     assert not mask[:, -1].any()
 
 
+def test_land_mask_treats_cells_outside_the_bundled_raster_as_not_land() -> None:
+    # The bundled raster only covers Japan and its outlying territory (see
+    # NATURAL_EARTH_PROVENANCE.json); nothing about GeographicBounds stops a
+    # caller from building a grid elsewhere, and such cells must not silently
+    # borrow whichever raster edge cell happens to be nearest.
+    bounds = GeographicBounds(west_deg=-75.0, south_deg=39.0, east_deg=-73.0, north_deg=41.0)
+    grid = SurfaceGrid.from_bounds(bounds, shape=(3, 3))
+    mask = land_mask_for_grid(grid)
+    assert not mask.any()
+
+
 def test_land_mask_rejects_an_unknown_source_name() -> None:
     grid = _grid()
     with pytest.raises(ValueError, match="Unknown land source"):
@@ -319,6 +330,17 @@ def test_add_surface_layer_with_colorbar_title_adds_one_trace() -> None:
     colorbar_trace = figure.data[-1]
     assert colorbar_trace.marker.showscale is True
     assert colorbar_trace.marker.colorbar.title.text == "PGV [cm/s]"
+
+
+def test_add_surface_layer_colorbar_x_offsets_away_from_the_default_position() -> None:
+    surface = _continuous_surface()
+    figure = go.Figure()
+    figure.update_layout(map={"style": "carto-positron"})
+
+    add_surface_layer(
+        figure, surface, cmin=0.0, cmax=100.0, colorbar_title="PGV [cm/s]", colorbar_x=1.15
+    )
+    assert figure.data[-1].marker.colorbar.x == 1.15
 
 
 def test_add_surface_layer_without_colorbar_title_adds_no_trace() -> None:
