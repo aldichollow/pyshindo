@@ -85,9 +85,14 @@ def build_nearest_plan(
 ) -> NearestPlan:
     """Precompute the nearest station for every grid cell."""
     lat, lon = validate_station_coordinates(latitudes_deg, longitudes_deg, minimum_count=1)
-    tree = cKDTree(lonlat_to_unit_xyz(lon, lat), copy_data=True)
+    # lonlat_to_unit_xyz always returns a fresh array with no other reference to
+    # it, so there is nothing for cKDTree's own copy_data=True to protect against.
+    tree = cKDTree(lonlat_to_unit_xyz(lon, lat))
     grid_lon, grid_lat = grid.flat_coordinates()
-    chord, index = tree.query(lonlat_to_unit_xyz(grid_lon, grid_lat), k=1)
+    # workers=-1 parallelizes the query across all available CPU cores; for a
+    # few hundred thousand grid cells this is the dominant cost of building a
+    # plan (profiled), and the result is identical to a single-threaded query.
+    chord, index = tree.query(lonlat_to_unit_xyz(grid_lon, grid_lat), k=1, workers=-1)
     distance_km = chord_to_great_circle_km(chord)
     support_mask = (
         np.ones(distance_km.shape, dtype=bool)

@@ -105,7 +105,9 @@ def build_idw_plan(
 ) -> IDWPlan:
     """Precompute IDW neighbor indices and weights for every grid cell."""
     lat, lon = validate_station_coordinates(latitudes_deg, longitudes_deg, minimum_count=1)
-    tree = cKDTree(lonlat_to_unit_xyz(lon, lat), copy_data=True)
+    # lonlat_to_unit_xyz always returns a fresh array with no other reference to
+    # it, so there is nothing for cKDTree's own copy_data=True to protect against.
+    tree = cKDTree(lonlat_to_unit_xyz(lon, lat))
     k = min(config.neighbors, lat.size)
     upper_chord = (
         np.inf
@@ -113,8 +115,11 @@ def build_idw_plan(
         else great_circle_radius_to_chord(config.max_distance_km)
     )
     grid_lon, grid_lat = grid.flat_coordinates()
+    # workers=-1 parallelizes the query across all available CPU cores; for a
+    # few hundred thousand grid cells this is the dominant cost of building a
+    # plan (profiled), and the result is identical to a single-threaded query.
     chord, index = tree.query(
-        lonlat_to_unit_xyz(grid_lon, grid_lat), k=k, distance_upper_bound=upper_chord
+        lonlat_to_unit_xyz(grid_lon, grid_lat), k=k, distance_upper_bound=upper_chord, workers=-1
     )
     # cKDTree.query drops the trailing axis when k == 1; restoring shape (M, k)
     # here lets every line below handle both cases identically.

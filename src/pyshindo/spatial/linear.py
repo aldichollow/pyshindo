@@ -171,8 +171,13 @@ def build_linear_plan(
             weight[degenerate_rows] = 0.0
             vertex_index[degenerate_rows] = 0
 
-    tree = cKDTree(lonlat_to_unit_xyz(lon, lat), copy_data=True)
-    chord, _ = tree.query(lonlat_to_unit_xyz(grid_lon, grid_lat), k=1)
+    # lonlat_to_unit_xyz always returns a fresh array with no other reference to
+    # it, so there is nothing for cKDTree's own copy_data=True to protect against.
+    tree = cKDTree(lonlat_to_unit_xyz(lon, lat))
+    # workers=-1 parallelizes the query across all available CPU cores; for a
+    # few hundred thousand grid cells this is the dominant cost of building a
+    # plan (profiled), and the result is identical to a single-threaded query.
+    chord, _ = tree.query(lonlat_to_unit_xyz(grid_lon, grid_lat), k=1, workers=-1)
     nearest_distance_km = chord_to_great_circle_km(chord)
 
     return LinearPlan(
