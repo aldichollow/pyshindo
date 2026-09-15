@@ -5,7 +5,13 @@ import math
 import numpy as np
 import pytest
 
-from pyshindo.spatial import GeographicBounds, IDWConfig, SurfaceGrid, interpolate_surface
+from pyshindo.spatial import (
+    GeographicBounds,
+    IDWConfig,
+    NearestConfig,
+    SurfaceGrid,
+    interpolate_surface,
+)
 from pyshindo.spatial.idw import build_idw_plan
 
 RNG = np.random.default_rng(20260915)
@@ -149,6 +155,34 @@ def test_idw_support_radius_excludes_far_stations() -> None:
         config=IDWConfig(neighbors=2, max_distance_km=10.0, minimum_neighbors=1),
     )
     assert plan.neighbor_count[0] == 1
+
+
+def test_idw_with_a_single_neighbor_matches_nearest_assignment() -> None:
+    # neighbors=1 is a real, reachable configuration -- scipy.spatial.cKDTree
+    # drops the trailing axis when k == 1, and build_idw_plan reshapes it back
+    # to (cell_count, 1); exercised here across several grid cells rather
+    # than the single-cell grids the other tests use, since the reshape is
+    # the thing under test.
+    bounds = GeographicBounds(west_deg=134.0, south_deg=34.0, east_deg=136.0, north_deg=36.0)
+    grid = SurfaceGrid.from_bounds(bounds, shape=(4, 4))
+    station_lat = np.array([34.5, 35.5])
+    station_lon = np.array([134.5, 135.5])
+    station_value = np.array([10.0, 20.0])
+
+    surface = interpolate_surface(
+        station_lat,
+        station_lon,
+        station_value,
+        grid=grid,
+        method="idw",
+        config=IDWConfig(neighbors=1, max_distance_km=500.0, minimum_neighbors=1),
+    )
+    nearest_surface = interpolate_surface(
+        station_lat, station_lon, station_value, grid=grid,
+        method="nearest", config=NearestConfig(allow_extrapolation=True),
+    )
+    assert np.all(surface.support_mask)
+    np.testing.assert_array_equal(surface.values, nearest_surface.values)
 
 
 def test_idw_requires_minimum_neighbors_for_support() -> None:

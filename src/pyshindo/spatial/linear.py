@@ -104,20 +104,6 @@ def build_linear_plan(
     lat, lon = validate_station_coordinates(latitudes_deg, longitudes_deg, minimum_count=3)
     center_longitude_deg = 0.5 * (grid.bounds.west_deg + grid.bounds.east_deg)
     center_latitude_deg = 0.5 * (grid.bounds.south_deg + grid.bounds.north_deg)
-    extent_km = max(
-        great_circle_distance_km(
-            center_longitude_deg, center_latitude_deg, corner_longitude_deg, corner_latitude_deg
-        )
-        for corner_longitude_deg, corner_latitude_deg in grid.image_corners
-    )
-    if extent_km > config.maximum_extent_km:
-        raise ValueError(
-            f"The grid spans {extent_km:.0f} km from its center, beyond "
-            f"config.maximum_extent_km={config.maximum_extent_km:.0f} km. The local "
-            "planar projection this method relies on degrades over very large extents; "
-            "use a smaller grid, raise maximum_extent_km deliberately, or use "
-            "method='idw' instead."
-        )
 
     station_xy = aeqd_project_km(
         lon,
@@ -125,6 +111,30 @@ def build_linear_plan(
         center_longitude_deg=center_longitude_deg,
         center_latitude_deg=center_latitude_deg,
     )
+    # AEQD preserves distance from the center exactly, so the station's own
+    # projected radius *is* its true great-circle distance -- no separate
+    # distance computation needed here. Checked alongside the grid's own
+    # extent: a station is projected (and can become a hull vertex) even if
+    # every grid cell is close to the center, so bounding only the grid would
+    # leave a far-outlier station free to distort the triangulation with
+    # nothing catching it.
+    station_extent_km = float(np.max(np.hypot(station_xy[:, 0], station_xy[:, 1])))
+    grid_extent_km = max(
+        great_circle_distance_km(
+            center_longitude_deg, center_latitude_deg, corner_longitude_deg, corner_latitude_deg
+        )
+        for corner_longitude_deg, corner_latitude_deg in grid.image_corners
+    )
+    extent_km = max(station_extent_km, grid_extent_km)
+    if extent_km > config.maximum_extent_km:
+        raise ValueError(
+            f"The stations and grid together span {extent_km:.0f} km from their "
+            f"center, beyond config.maximum_extent_km={config.maximum_extent_km:.0f} km. "
+            "The local planar projection this method relies on degrades over very "
+            "large extents; use a smaller grid, drop the far station(s), raise "
+            "maximum_extent_km deliberately, or use method='idw' instead."
+        )
+
     grid_lon, grid_lat = grid.flat_coordinates()
     grid_xy = aeqd_project_km(
         grid_lon,

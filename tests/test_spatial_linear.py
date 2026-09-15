@@ -136,3 +136,18 @@ def test_linear_rejects_a_grid_extent_beyond_the_configured_limit() -> None:
         build_linear_plan(
             station_lat, station_lon, grid=grid, config=LinearConfig(maximum_extent_km=1000.0)
         )
+
+
+def test_linear_rejects_a_far_outlier_station_even_with_a_small_grid() -> None:
+    # The grid alone can be well within maximum_extent_km while a station used
+    # to triangulate it is not: AEQD is applied to stations too, and a far
+    # outlier station would otherwise be silently projected (and could end up
+    # a hull vertex) with nothing checking its own distance from the center.
+    bounds = _bounds()  # a small, ordinary regional grid
+    grid = SurfaceGrid.from_bounds(bounds, shape=(5, 5))
+    station_lat = np.array([35.0, 36.0, 37.0, 0.0])  # the last station is far away
+    station_lon = np.array([135.0, 136.0, 134.0, 0.0])
+    with pytest.raises(ValueError, match="maximum_extent_km"):
+        build_linear_plan(
+            station_lat, station_lon, grid=grid, config=LinearConfig(maximum_extent_km=1000.0)
+        )
