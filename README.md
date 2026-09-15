@@ -282,8 +282,7 @@ interactive window.
 | [`09_spectrum_intensity.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/09_spectrum_intensity.py)     | SI value, per component, and why its period grid was chosen                                        |
 | [`10_station_map.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/10_station_map.py)                   | Distribution maps: long-period class and PGV across every station of one event                     |
 | [`11_response_spectrum.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/11_response_spectrum.py)       | The general Sd/Sv/PSA spectrum, and reconstructing an absolute response spectrum from it           |
-| [`12_station_surface_interpolation.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/12_station_surface_interpolation.py) | Interpolating PGV/PGA/intensity between stations with `pyshindo.spatial`, and the class-only fallback |
-| [`13_station_surface_map.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/13_station_surface_map.py)   | Rendering an interpolated surface as a land-only map layer under station markers                  |
+| [`12_station_surface_interpolation.py`](https://github.com/aldichollow/pyshindo/blob/main/examples/12_station_surface_interpolation.py) | Interpolating PGV/PGA/intensity between stations with `pyshindo.spatial`, and rendering the result as a land-only map layer under station markers |
 
 ## Development
 

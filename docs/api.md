@@ -383,10 +383,11 @@ intensity_map_figure(latitudes_deg, longitudes_deg, intensities, *, labels=None,
 long_period_class_map_figure(latitudes_deg, longitudes_deg, classes, *, labels=None, title=...,
                               map_style="carto-positron")
 continuous_value_map_figure(latitudes_deg, longitudes_deg, values, *, value_label, labels=None,
-                             colorscale="YlOrRd", title=..., map_style="carto-positron")
+                             colorscale="YlOrRd", color_transform="identity", title=...,
+                             map_style="carto-positron")
 ```
 
-これも薄いアダプタです。緯度・経度・値の並列配列を渡すだけで、`pyshindo.io`・`pyshindo.obspy_interop`・その他どのデータ源から来た値かは関知しません。震度・長周期地震動階級は既存の図と同じJMA配色で階級ごとに1トレースに分け、SI値・PGVのような公式階級のない連続値は連続カラースケール+カラーバーの1トレースになります。Plotlyの`Scattermap`(トークン不要の組み込みMapLibreスタイル)を使用します。既定の背景地図`"carto-positron"`はマーカーの色が沈まないよう抑えたグレースケールで、`map_style`引数で`"open-street-map"`(元のカラフルなOSMタイル)や`"carto-positron-nolabels"`などPlotlyの組み込みスタイルに切り替えられます。`Scattermap`のマーカーには`Scatter`と違って枠線(`marker.line`)がないため、各マーカーの背後に白い縁取り用の非表示トレースを重ねています。使用例は[`examples/10_station_map.py`](../examples/10_station_map.py)を参照してください。
+これも薄いアダプタです。緯度・経度・値の並列配列を渡すだけで、`pyshindo.io`・`pyshindo.obspy_interop`・その他どのデータ源から来た値かは関知しません。震度・長周期地震動階級は既存の図と同じJMA配色で階級ごとに1トレースに分け、SI値・PGVのような公式階級のない連続値は連続カラースケール+カラーバーの1トレースになります。`color_transform="log"`でマーカー色をlog(values)にできます(既定は`"identity"`で変更なし、`pyshindo.spatial`の`transform`と同じく暗黙には適用されません)。PGA/PGVのような対数正規分布に近い量は、線形のままだと震源近傍以外の差が潰れて見えるため。Plotlyの`Scattermap`(トークン不要の組み込みMapLibreスタイル)を使用します。既定の背景地図`"carto-positron"`はマーカーの色が沈まないよう抑えたグレースケールで、`map_style`引数で`"open-street-map"`(元のカラフルなOSMタイル)や`"carto-positron-nolabels"`などPlotlyの組み込みスタイルに切り替えられます。`Scattermap`のマーカーには`Scatter`と違って枠線(`marker.line`)がないため、各マーカーの背後に濃いグレーの縁取り用の非表示トレースを重ねています。使用例は[`examples/10_station_map.py`](../examples/10_station_map.py)を参照してください。
 
 ### 補間サーフェスのレイヤー描画
 
@@ -395,8 +396,8 @@ from pyshindo.plotting import add_surface_layer, add_class_surface_layer
 
 add_surface_layer(figure, surface, *, cmin, cmax, colorscale="YlOrRd",
                    color_transform="identity", land="natural_earth_japan_10m",
-                   colorbar_title=None)
+                   colorbar_title=None, colorbar_x=None)
 add_class_surface_layer(figure, surface, *, colors, land="natural_earth_japan_10m")
 ```
 
-`pyshindo.spatial.interpolate_surface`の出力を、既存の観測点分布図(上記)の下に画像レイヤーとして重ねます。`land`(既定で陸地のみ表示、`None`で無効化)は同梱のラスタ(Natural Earth 1:10m、`scripts/build_natural_earth_japan.py`で生成)によるもので、Shapely等の追加依存は不要です。使用例は[`examples/13_station_surface_map.py`](../examples/13_station_surface_map.py)。
+`pyshindo.spatial.interpolate_surface`の出力を、既存の観測点分布図(上記)の下に画像レイヤーとして重ねます。`land`(既定で陸地のみ表示、`None`で無効化)は同梱のラスタ(Natural Earth 1:10m、`scripts/build_natural_earth_japan.py`で生成)によるもので、Shapely等の追加依存は不要です。`colorscale`にはPlotly組み込み名だけでなく、`[position, color]`のリスト(離散的なバンド配色を作る場合など)も渡せます。使用例は[`examples/12_station_surface_interpolation.py`](../examples/12_station_surface_interpolation.py)。

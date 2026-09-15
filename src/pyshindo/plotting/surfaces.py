@@ -29,8 +29,8 @@ exact lookup table, the same JMA/long-period class colors
 :mod:`pyshindo.plotting.maps` already uses for station markers.
 
 The image layer is inserted below the existing traces
-(``below="traces"``), so station markers and their white halos stay on top
-and observations continue to visually dominate the interpolated field
+(``below="traces"``), so station markers and their halos stay on top and
+observations continue to visually dominate the interpolated field
 beneath them.
 """
 
@@ -390,7 +390,7 @@ def add_surface_layer(
         add_surface_layer(figure, surface, cmin=0.0, cmax=30.0)
 
     Inserted with ``below="traces"`` by default, so station markers and
-    their white halos stay drawn on top and remain the visually dominant
+    their halos stay drawn on top and remain the visually dominant
     layer; the interpolated surface is context underneath them, not a
     replacement for them. Returns ``figure`` for chaining, but mutates it
     in place, the same as Plotly's own ``update_layout``/``add_trace``.
