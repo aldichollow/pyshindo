@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from pyshindo.long_period import LongPeriodClass
@@ -44,10 +45,10 @@ def test_intensity_map_uses_the_jma_color_guide() -> None:
     assert named.marker.color == JMA_INTENSITY_COLORS[IntensityScale.SEVEN]
 
 
-def test_intensity_map_markers_have_a_white_halo_behind_them() -> None:
+def test_intensity_map_markers_have_a_dark_gray_halo_behind_them() -> None:
     figure = intensity_map_figure(LAT[:1], LON[:1], [IntensityScale.SEVEN])
     halo = next(trace for trace in figure.data if not trace.name)
-    assert halo.marker.color == "#FFFFFF"
+    assert halo.marker.color == "#404040"
     assert halo.showlegend is False
 
 
@@ -76,6 +77,108 @@ def test_continuous_value_map_is_a_single_colorscaled_trace() -> None:
     assert marker.showscale is True
     assert marker.colorbar.title.text == "SI [cm/s]"
     assert list(marker.color) == [1.0, 5.0, 12.0, 3.0]
+
+
+def test_color_transform_log_colors_markers_by_log_of_the_value() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 10.0, 100.0, 1000.0], value_label="PGA [gal]", color_transform="log"
+    )
+    marker = figure.data[-1].marker
+    np.testing.assert_allclose(list(marker.color), np.log([1.0, 10.0, 100.0, 1000.0]))
+
+
+def test_color_transform_log_restores_real_unit_colorbar_ticks() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 10.0, 100.0, 1000.0], value_label="PGA [gal]", color_transform="log"
+    )
+    colorbar = figure.data[-1].marker.colorbar
+    # ticktext is rounded to 3 significant figures for display, so this only
+    # needs to agree with tickvals to that same precision, not exactly.
+    real_values = np.array(colorbar.ticktext, dtype=float)
+    np.testing.assert_allclose(list(colorbar.tickvals), np.log(real_values), rtol=1e-2)
+
+
+def test_color_transform_log_still_shows_real_values_in_hover_text() -> None:
+    figure = continuous_value_map_figure(
+        LAT[:2], LON[:2], [1.0, 100.0], value_label="PGA [gal]", color_transform="log"
+    )
+    assert list(figure.data[-1].customdata) == [1.0, 100.0]
+
+
+def test_color_transform_log_rejects_a_non_positive_value() -> None:
+    with pytest.raises(ValueError, match="strictly positive"):
+        continuous_value_map_figure(
+            LAT[:2], LON[:2], [1.0, 0.0], value_label="PGA [gal]", color_transform="log"
+        )
+
+
+def test_color_transform_log_handles_an_empty_station_list() -> None:
+    figure = continuous_value_map_figure([], [], [], value_label="PGA [gal]", color_transform="log")
+    assert list(figure.data[-1].marker.color) == []
+    assert figure.data[-1].marker.colorbar.tickvals is None
+
+
+def test_color_transform_rejects_an_unknown_value() -> None:
+    with pytest.raises(ValueError, match="color_transform"):
+        continuous_value_map_figure(
+            LAT[:1], LON[:1], [1.0], value_label="x", color_transform="sqrt"
+        )
+
+
+def test_color_transform_identity_is_unaffected_by_the_new_parameter() -> None:
+    figure = continuous_value_map_figure(LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="SI [cm/s]")
+    assert list(figure.data[-1].marker.color) == [1.0, 5.0, 12.0, 3.0]
+    assert figure.data[-1].marker.colorbar.tickvals is None
+
+
+def test_cmin_cmax_default_to_none_and_auto_range() -> None:
+    figure = continuous_value_map_figure(LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x")
+    assert figure.data[-1].marker.cmin is None
+    assert figure.data[-1].marker.cmax is None
+
+
+def test_cmin_cmax_fix_the_marker_color_range_under_identity() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x", cmin=0.0, cmax=100.0
+    )
+    assert figure.data[-1].marker.cmin == 0.0
+    assert figure.data[-1].marker.cmax == 100.0
+
+
+def test_cmin_cmax_are_log_transformed_to_match_the_color_values_under_log() -> None:
+    figure = continuous_value_map_figure(
+        LAT, LON, [1.0, 5.0, 12.0, 3.0], value_label="x", color_transform="log",
+        cmin=0.5, cmax=1000.0,
+    )
+    marker = figure.data[-1].marker
+    assert marker.cmin == pytest.approx(np.log(0.5))
+    assert marker.cmax == pytest.approx(np.log(1000.0))
+    # The colorbar ticks come from the explicit range, not the data's own.
+    real_ticks = np.array(marker.colorbar.ticktext, dtype=float)
+    assert real_ticks.min() == pytest.approx(0.5, rel=1e-2)
+    assert real_ticks.max() == pytest.approx(1000.0, rel=1e-2)
+
+
+def test_cmin_cmax_reject_cmin_not_less_than_cmax() -> None:
+    with pytest.raises(ValueError, match="cmin must be less than cmax"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmin=5.0, cmax=5.0)
+
+
+def test_cmin_cmax_reject_being_given_alone() -> None:
+    # Plotly silently ignores just one of cmin/cmax (falls back to full
+    # auto-range), so a caller who sets only one would have their explicit
+    # choice quietly discarded rather than honored.
+    with pytest.raises(ValueError, match="given together"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmin=0.0)
+    with pytest.raises(ValueError, match="given together"):
+        continuous_value_map_figure(LAT[:1], LON[:1], [1.0], value_label="x", cmax=10.0)
+
+
+def test_cmin_cmax_reject_non_positive_values_under_log() -> None:
+    with pytest.raises(ValueError, match="strictly positive"):
+        continuous_value_map_figure(
+            LAT[:1], LON[:1], [1.0], value_label="x", color_transform="log", cmin=0.0, cmax=10.0
+        )
 
 
 def test_labels_appear_in_hover_text() -> None:
@@ -169,7 +272,7 @@ def test_marker_size_is_overridable_and_the_halo_scales_with_it() -> None:
     )
     halo, marker = figure.data
     assert marker.marker.size == 20.0
-    assert halo.marker.size == 25.0  # marker_size + the fixed halo margin
+    assert halo.marker.size == 23.0  # marker_size + the fixed halo margin
 
 
 def test_marker_size_is_overridable_for_discrete_class_maps() -> None:
@@ -177,7 +280,7 @@ def test_marker_size_is_overridable_for_discrete_class_maps() -> None:
     halo = next(trace for trace in figure.data if not trace.name)
     named = next(trace for trace in figure.data if trace.name)
     assert named.marker.size == 6.0
-    assert halo.marker.size == 11.0
+    assert halo.marker.size == 9.0
 
 
 def test_non_positive_marker_size_is_rejected() -> None:

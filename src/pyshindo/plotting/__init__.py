@@ -17,6 +17,14 @@ from .maps import (
     intensity_map_figure,
     long_period_class_map_figure,
 )
+from .surfaces import (
+    add_class_surface_layer,
+    add_surface_layer,
+    encode_png,
+    land_mask_for_grid,
+    render_class_surface_rgba,
+    render_surface_rgba,
+)
 from .theme import (
     JMA_INTENSITY_COLORS,
     LINE_COLORS,
@@ -33,17 +41,23 @@ __all__ = [
     "STAGE_COLORS",
     "TEXT_ON_INTENSITY",
     "acceleration_figure",
+    "add_class_surface_layer",
     "add_intensity_bands",
+    "add_surface_layer",
     "amplitude_duration_figure",
     "apply_theme",
     "continuous_value_map_figure",
+    "encode_png",
     "filter_response_figure",
     "filter_stages_figure",
     "intensity_comparison_figure",
     "intensity_map_figure",
     "jma_filter_components_figure",
+    "land_mask_for_grid",
     "long_period_class_map_figure",
     "long_period_spectrum_figure",
     "measured_result_figure",
     "realtime_result_figure",
+    "render_class_surface_rgba",
+    "render_surface_rgba",
 ]

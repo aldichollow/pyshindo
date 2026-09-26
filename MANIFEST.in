@@ -3,3 +3,4 @@ include CHANGELOG.md
 recursive-include docs *.md *.png
 recursive-include examples *.py
 recursive-include scripts *.py
+recursive-include src/pyshindo/data *.npz *.json

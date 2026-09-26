@@ -339,6 +339,25 @@ ObsPyの `Stream` を本パッケージが扱う配列へ変換するだけの�
 
 `apply_obspy_calibration(stream)` は、K-NET/KiK-netなど一部のObsPyリーダーが`trace.data`を生カウント値のまま残し、物理量換算係数を`trace.stats.calib`に別途持たせている場合に、それを掛けて`calib`を1.0に戻したコピーを返します。`from_obspy_stream`はデータが既に物理量であることを前提とするため、その手前で通してください。
 
+## `pyshindo.spatial`(観測点間の空間補間、追加インストール不要)
+
+```python
+from pyshindo.spatial import (
+    GeographicBounds, SurfaceGrid, IDWConfig, LinearConfig, NearestConfig,
+    interpolate_surface, build_interpolation_plan,
+)
+
+grid = SurfaceGrid.from_bounds(GeographicBounds(west_deg, south_deg, east_deg, north_deg),
+                                approximate_resolution_km=5.0)
+surface = interpolate_surface(latitudes_deg, longitudes_deg, values, grid=grid,
+                               method="idw", config=IDWConfig(neighbors=8, max_distance_km=...),
+                               transform="identity", metric_name="pga", unit="gal")
+surface.values          # grid.shape、支持範囲外はNaN
+surface.support_mask    # 補間の根拠となる観測点があったセルだけTrue
+```
+
+観測点の値をNumPy/SciPyだけで空間補間します(Plotly等は不要)。`method`は`"idw"`(局所IDW)・`"linear"`(Delaunay三角形分割上の線形補間)・`"nearest"`(最近傍)。階級・色は補間せず、連続量(計測震度なら`intensity_raw`、長周期地震動なら`max_sva_cm_s`)を補間してから分類してください。階級しか値がない場合は`"nearest"`のみを使います。`config`の探索半径は既定を持たず、`allow_extrapolation=True`を明示しない限り必須です。使用例は[`examples/12_station_surface_interpolation.py`](../examples/12_station_surface_interpolation.py)。
+
 ## `pyshindo.plotting`(可視化、要 `pip install pyshindo[plot]`)
 
 ```python
@@ -364,7 +383,23 @@ intensity_map_figure(latitudes_deg, longitudes_deg, intensities, *, labels=None,
 long_period_class_map_figure(latitudes_deg, longitudes_deg, classes, *, labels=None, title=...,
                               map_style="carto-positron")
 continuous_value_map_figure(latitudes_deg, longitudes_deg, values, *, value_label, labels=None,
-                             colorscale="YlOrRd", title=..., map_style="carto-positron")
+                             colorscale="YlOrRd", color_transform="identity",
+                             cmin=None, cmax=None, title=..., map_style="carto-positron")
 ```
 
-これも薄いアダプタです。緯度・経度・値の並列配列を渡すだけで、`pyshindo.io`・`pyshindo.obspy_interop`・その他どのデータ源から来た値かは関知しません。震度・長周期地震動階級は既存の図と同じJMA配色で階級ごとに1トレースに分け、SI値・PGVのような公式階級のない連続値は連続カラースケール+カラーバーの1トレースになります。Plotlyの`Scattermap`(トークン不要の組み込みMapLibreスタイル)を使用します。既定の背景地図`"carto-positron"`はマーカーの色が沈まないよう抑えたグレースケールで、`map_style`引数で`"open-street-map"`(元のカラフルなOSMタイル)や`"carto-positron-nolabels"`などPlotlyの組み込みスタイルに切り替えられます。`Scattermap`のマーカーには`Scatter`と違って枠線(`marker.line`)がないため、各マーカーの背後に白い縁取り用の非表示トレースを重ねています。使用例は[`examples/10_station_map.py`](../examples/10_station_map.py)を参照してください。
+これも薄いアダプタです。緯度・経度・値の並列配列を渡すだけで、`pyshindo.io`・`pyshindo.obspy_interop`・その他どのデータ源から来た値かは関知しません。震度・長周期地震動階級は既存の図と同じJMA配色で階級ごとに1トレースに分け、SI値・PGVのような公式階級のない連続値は連続カラースケール+カラーバーの1トレースになります。`color_transform="log"`でマーカー色をlog(values)にできます(既定は`"identity"`で変更なし、`pyshindo.spatial`の`transform`と同じく暗黙には適用されません)。PGA/PGVのような対数正規分布に近い量は、線形のままだと震源近傍以外の差が潰れて見えるため。`cmin`/`cmax`は既定`None`でPlotlyが`values`自体の範囲に自動調整しますが、`add_surface_layer`で同じデータを重ねる場合は両方に同じ`cmin`/`cmax`(`color_transform="log"`でも実単位のまま)を明示しないと、マーカーとサーフェスで色の意味が食い違います。Plotlyの`Scattermap`(トークン不要の組み込みMapLibreスタイル)を使用します。既定の背景地図`"carto-positron"`はマーカーの色が沈まないよう抑えたグレースケールで、`map_style`引数で`"open-street-map"`(元のカラフルなOSMタイル)や`"carto-positron-nolabels"`などPlotlyの組み込みスタイルに切り替えられます。`Scattermap`のマーカーには`Scatter`と違って枠線(`marker.line`)がないため、各マーカーの背後に濃いグレーの縁取り用の非表示トレースを重ねています。使用例は[`examples/10_station_map.py`](../examples/10_station_map.py)を参照してください。
+
+### 補間サーフェスのレイヤー描画
+
+```python
+from pyshindo.plotting import add_surface_layer, add_class_surface_layer
+
+add_surface_layer(figure, surface, *, cmin, cmax, colorscale="YlOrRd",
+                   color_transform="identity", opacity=0.6,
+                   land="natural_earth_japan_10m",
+                   colorbar_title=None, colorbar_x=None)
+add_class_surface_layer(figure, surface, *, colors, opacity=0.6,
+                         land="natural_earth_japan_10m")
+```
+
+`pyshindo.spatial.interpolate_surface`の出力を、既存の観測点分布図(上記)の下に画像レイヤーとして重ねます。`land`(既定で陸地のみ表示、`None`で無効化)は同梱のラスタ(Natural Earth 1:10m、`scripts/build_natural_earth_japan.py`で生成)によるもので、Shapely等の追加依存は不要です。`colorscale`にはPlotly組み込み名だけでなく、`[position, color]`のリスト(離散的なバンド配色を作る場合など)も渡せます。`opacity`(0〜1、既定0.6)でサーフェスの不透明度を調整できます -- マーカーの上に敷く補助的な表示なので、既定はやや控えめです。使用例は[`examples/12_station_surface_interpolation.py`](../examples/12_station_surface_interpolation.py)。

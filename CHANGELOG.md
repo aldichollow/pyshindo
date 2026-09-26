@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 - 2026-09-26
+
+Added:
+
+- `pyshindo.spatial` -- interpolates station observations (PGV, PGA, measured intensity, or any continuous value) onto a grid with inverse-distance weighting, Delaunay-linear, or nearest-neighbor methods. NumPy/SciPy only, no new dependency. Neighbor searches run across all available CPU cores.
+- `pyshindo.plotting.surfaces` -- renders an interpolated surface as a land-only map layer under station markers, using a bundled Natural Earth coastline raster. No new dependency; Shapely is used only by a maintainer-only build script, never at runtime.
+- `color_transform`, `cmin`, and `cmax` on `continuous_value_map_figure`, for a log-scaled or fixed-range marker colorbar.
+
+Changed:
+
+- Map figure markers are slightly smaller, with a dark gray halo instead of white.
+
 ## 0.3.0 - 2026-09-14
 
 First release published to PyPI, with the public API reviewed for consistency. See [`docs/migration.md`](docs/migration.md) for the upgrade path -- every breaking change is listed there with before/after code.

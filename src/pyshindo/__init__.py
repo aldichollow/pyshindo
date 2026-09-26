@@ -1,6 +1,6 @@
 """Japanese instrumental seismic-intensity algorithms for Python."""
 
-from . import long_period
+from . import long_period, spatial
 from ._version import __version__
 from .comparison import compare_intensity_methods
 from .duration import (
@@ -205,6 +205,7 @@ __all__ = [
     "resample_acceleration",
     "sampling_diagnostics",
     "scale_acceleration_to_intensity",
+    "spatial",
     "synthetic_three_component_motion",
     "threshold_acceleration_from_intensity",
     "time_axis",
