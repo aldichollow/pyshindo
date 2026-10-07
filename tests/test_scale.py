@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,7 @@ from pyshindo.scale import (
     intensity_interval,
     intensity_label,
     report_intensity,
+    report_intensity_array,
     threshold_acceleration_from_intensity,
 )
 
@@ -39,6 +42,69 @@ def test_zero_acceleration_maps_to_negative_infinity() -> None:
 )
 def test_report_intensity_two_step_decimal_rule(raw: float, reported: float) -> None:
     assert report_intensity(raw) == reported
+
+
+_KNOWN_BOUNDARY_VALUES = (
+    2.495,
+    3.495,
+    4.495,
+    5.495,
+    6.495,
+    4.444,
+    4.445,
+    4.449,
+    4.450,
+    4.499,
+    -1.999,
+    -4.445,
+    -2.495,
+    0.0,
+    -0.0,
+)
+
+
+def _assert_matches_scalar_oracle(values: np.ndarray) -> None:
+    actual = report_intensity_array(values)
+    for value, result in zip(values, actual, strict=True):
+        expected = report_intensity(float(value))
+        if math.isnan(expected):
+            assert math.isnan(result)
+        else:
+            assert result == expected
+            if math.isfinite(result):
+                assert math.copysign(1.0, result) == math.copysign(1.0, expected)
+
+
+def test_report_intensity_array_matches_scalar_oracle_on_known_boundaries() -> None:
+    _assert_matches_scalar_oracle(np.array(_KNOWN_BOUNDARY_VALUES))
+
+
+def test_report_intensity_array_matches_scalar_oracle_near_boundaries() -> None:
+    known = np.array(_KNOWN_BOUNDARY_VALUES)
+    _assert_matches_scalar_oracle(np.nextafter(known, np.inf))
+    _assert_matches_scalar_oracle(np.nextafter(known, -np.inf))
+
+
+def test_report_intensity_array_matches_scalar_oracle_on_non_finite_values() -> None:
+    _assert_matches_scalar_oracle(np.array([np.nan, np.inf, -np.inf]))
+
+
+def test_report_intensity_array_matches_scalar_oracle_on_large_magnitudes() -> None:
+    _assert_matches_scalar_oracle(np.array([1e15, 1e15 + 0.5, -1e16, 1e14 + 0.0005]))
+
+
+def test_report_intensity_array_matches_scalar_oracle_on_random_values() -> None:
+    rng = np.random.default_rng(2026)
+    random_values = rng.uniform(-50.0, 50.0, size=20_000)
+    tie_targets = np.round(rng.choice(np.arange(-100, 101) / 10.0, size=2_000), 3)
+    offsets = (rng.integers(0, 2, tie_targets.size) * 2 - 1) * 0.005
+    _assert_matches_scalar_oracle(np.concatenate([random_values, tie_targets + offsets]))
+
+
+def test_report_intensity_array_preserves_input_shape() -> None:
+    values = np.array([[4.444, 4.495], [-1.999, 0.0]])
+    result = report_intensity_array(values)
+    assert result.shape == values.shape
 
 
 @pytest.mark.parametrize(
