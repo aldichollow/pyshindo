@@ -20,6 +20,7 @@ from typing import Protocol
 import numpy as np
 import numpy.typing as npt
 
+from .._immutable import frozen_array, frozen_mapping
 from ._geometry import EARTH_RADIUS_KM
 
 type FloatArray = npt.NDArray[np.float64]
@@ -92,7 +93,7 @@ class GeographicBounds:
             )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class SurfaceGrid:
     """A regular grid of pixel centers over a :class:`GeographicBounds` extent.
 
@@ -103,6 +104,9 @@ class SurfaceGrid:
     image is usually read. :mod:`pyshindo.plotting.surfaces` flips the
     array vertically when it builds an image from a surface; see its module
     docstring.
+
+    Equality is disabled (``eq=False``) because both fields are arrays; use
+    :func:`pyshindo.comparison.compare_results` instead.
     """
 
     bounds: GeographicBounds
@@ -110,8 +114,8 @@ class SurfaceGrid:
     latitudes_deg: FloatArray
 
     def __post_init__(self) -> None:
-        lon = np.array(self.longitudes_deg, dtype=np.float64, copy=True)
-        lat = np.array(self.latitudes_deg, dtype=np.float64, copy=True)
+        lon = frozen_array(self.longitudes_deg, dtype=np.float64)
+        lat = frozen_array(self.latitudes_deg, dtype=np.float64)
         if lon.ndim != 1 or lat.ndim != 1:
             raise ValueError(
                 "SurfaceGrid.longitudes_deg and latitudes_deg must be one-dimensional."
@@ -124,8 +128,6 @@ class SurfaceGrid:
             raise ValueError("SurfaceGrid.longitudes_deg must be strictly increasing.")
         if lat.size > 1 and np.any(np.diff(lat) <= 0.0):
             raise ValueError("SurfaceGrid.latitudes_deg must be strictly increasing.")
-        lon.setflags(write=False)
-        lat.setflags(write=False)
         object.__setattr__(self, "longitudes_deg", lon)
         object.__setattr__(self, "latitudes_deg", lat)
 
@@ -348,8 +350,11 @@ class SurfaceMetadata:
     station_count: int
     parameters: Mapping[str, object]
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", frozen_mapping(self.parameters))
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, eq=False)
 class InterpolatedSurface:
     """The result of interpolating station observations onto a grid.
 
@@ -360,6 +365,9 @@ class InterpolatedSurface:
     property of the interpolation. Seismic waves do not stop at the
     coastline, so a land mask is never used as a distance barrier during
     interpolation.
+
+    Equality is disabled (``eq=False``) because every array field is an
+    array; use :func:`pyshindo.comparison.compare_results` instead.
     """
 
     grid: SurfaceGrid
@@ -377,6 +385,7 @@ class InterpolatedSurface:
                 raise ValueError(
                     f"{name} has shape {actual}, which does not match grid.shape {expected}."
                 )
+            object.__setattr__(self, name, frozen_array(getattr(self, name)))
 
     def sample_nearest(self, latitude_deg: float, longitude_deg: float) -> float:
         """Return the value at the grid cell closest to one point.
