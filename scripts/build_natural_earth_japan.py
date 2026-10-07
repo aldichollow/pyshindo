@@ -69,9 +69,10 @@ MINOR_ISLANDS_URL: Final = (
 
 # West/south/east/north, in degrees. Wide enough to include Japan's outlying
 # territory -- Minamitorishima in the east (~153.98 E), Okinotorishima in the
-# south (~20.42 N), and the Kuril-area northern extent (~45.6 N) -- with a
-# margin so a station or grid cell near the edge is not clipped by the raster
-# itself rather than by whatever bounds the caller actually requested.
+# south (~20.42 N), and the Chishima Islands (Kuril-area) northern extent
+# (~45.6 N) -- with a margin so a station or grid cell near the edge is not
+# clipped by the raster itself rather than by whatever bounds the caller
+# actually requested.
 CROP_WEST_DEG: Final = 122.0
 CROP_SOUTH_DEG: Final = 19.0
 CROP_EAST_DEG: Final = 155.0
