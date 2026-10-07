@@ -71,6 +71,18 @@ compare_intensity_methods(acceleration, sampling_rate_hz=100.0, *, unit="gal",
 
 `.raw_difference` / `.reported_difference` / `.scale_agreement` でFFT参照値とリアルタイム最大値のずれを確認できます。
 
+## 結果の比較、方式の位置づけ
+
+```python
+compare_results(a, b, *, rtol=1e-9, atol=1e-12) -> ComparisonReport
+method_descriptor(method_id) -> MethodDescriptor
+available_method_ids() -> tuple[str, ...]
+```
+
+配列フィールドを持つ結果型(`MeasuredIntensityResult`など)は`eq=False`で`==`を無効化しています(配列同士の`==`は真偽値ではないため)。代わりに`compare_results`でフィールドごとに比較してください -- 数値は`rtol`/`atol`で許容誤差を見て比較し、`timing`のように`compare=False`が付いたフィールド(実行のたびに変わる計測時間)は除外されます。`ComparisonReport`は`bool()`で真偽判定でき、`str()`で差分一覧を得られます。
+
+`method_descriptor`は、この計算が気象庁の基準方式そのものか(`MethodStatus.REFERENCE`)、公表された近似方式か(`PUBLISHED_APPROXIMATION`)、このパッケージ独自の判断か(`PACKAGE_EXTENSION`)、特定の地震動指標に紐づかない一般的な数値計算手法か(`GENERAL_ENGINEERING_METHOD`)を機械的に区別するレジストリです。`available_method_ids()`で登録済みのIDを確認できます。既存の結果型には(後方互換性のため)紐付けていません。
+
 ## フィルタ設計の検査
 
 ```python

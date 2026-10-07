@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import Delaunay, QhullError, cKDTree
 
+from .._immutable import frozen_array
 from ._geometry import (
     aeqd_project_km,
     chord_to_great_circle_km,
@@ -37,9 +38,14 @@ from .validation import validate_station_coordinates, validate_values
 type FloatArray = npt.NDArray[np.float64]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class LinearPlan:
-    """A precomputed Delaunay triangulation, reusable across many frames."""
+    """A precomputed Delaunay triangulation, reusable across many frames.
+
+    Equality is disabled (``eq=False``) because every field but ``grid``,
+    ``station_count``, and ``config`` is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     grid: SurfaceGrid
     station_count: int
@@ -48,6 +54,12 @@ class LinearPlan:
     support_mask: npt.NDArray[np.bool_]
     nearest_distance_km: FloatArray
     config: LinearConfig
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "vertex_index", frozen_array(self.vertex_index))
+        object.__setattr__(self, "barycentric_weight", frozen_array(self.barycentric_weight))
+        object.__setattr__(self, "support_mask", frozen_array(self.support_mask))
+        object.__setattr__(self, "nearest_distance_km", frozen_array(self.nearest_distance_km))
 
     def interpolate(
         self,

@@ -49,6 +49,7 @@ from typing import Any, Final
 import numpy as np
 import numpy.typing as npt
 
+from .._immutable import frozen_array
 from ..spatial import InterpolatedSurface, SurfaceGrid
 from .theme import require_plotly
 
@@ -68,12 +69,20 @@ _DEFAULT_LAND: Final = "natural_earth_japan_10m"
 # --------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class _LandRaster:
+    """Cached, ``lru_cache``-shared across every caller for the session's
+    lifetime -- ``mask`` is read-only so nothing downstream can corrupt the
+    shared copy by mistake.
+    """
+
     mask: npt.NDArray[np.bool_]
     west_deg: float
     south_deg: float
     resolution_deg: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mask", frozen_array(self.mask))
 
 
 @lru_cache(maxsize=4)

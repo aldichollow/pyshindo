@@ -29,6 +29,14 @@ def test_2012_filter_has_six_biquads_and_is_stable_at_100_hz() -> None:
     assert design.max_pole_radius < 1.0
 
 
+def test_filter_design_sos_and_parameters_are_read_only() -> None:
+    design = design_realtime_filter(100.0, filter_name=RealtimeFilter.KUNUGI_2012)
+    with pytest.raises(ValueError, match="read-only"):
+        design.sos[0, 0] = 99.0
+    with pytest.raises(TypeError):
+        design.parameters["new_key"] = 1.0  # type: ignore[index]
+
+
 def test_2012_analog_response_reproduces_reported_approximation_range() -> None:
     frequency = np.geomspace(0.1, 50.0, 20_000)
     ratio = kunugi_2012_analog_amplitude(frequency) / jma_filter_response(frequency)

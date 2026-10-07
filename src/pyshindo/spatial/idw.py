@@ -22,6 +22,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import cKDTree
 
+from .._immutable import frozen_array
 from ._geometry import chord_to_great_circle_km, great_circle_radius_to_chord, lonlat_to_unit_xyz
 from ._transform import forward_transform, inverse_transform
 from .models import (
@@ -37,9 +38,24 @@ from .validation import validate_station_coordinates, validate_values
 type FloatArray = npt.NDArray[np.float64]
 
 
-@dataclass(frozen=True, slots=True)
+_ARRAY_FIELDS = (
+    "neighbor_index",
+    "neighbor_weight",
+    "support_mask",
+    "exact_station_index",
+    "nearest_distance_km",
+    "neighbor_count",
+)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
 class IDWPlan:
-    """A precomputed IDW neighbor search, reusable across many frames."""
+    """A precomputed IDW neighbor search, reusable across many frames.
+
+    Equality is disabled (``eq=False``) because every field but ``grid``,
+    ``station_count``, and ``config`` is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     grid: SurfaceGrid
     station_count: int
@@ -50,6 +66,10 @@ class IDWPlan:
     nearest_distance_km: FloatArray
     neighbor_count: npt.NDArray[np.uint16]
     config: IDWConfig
+
+    def __post_init__(self) -> None:
+        for array_field in _ARRAY_FIELDS:
+            object.__setattr__(self, array_field, frozen_array(getattr(self, array_field)))
 
     def interpolate(
         self,

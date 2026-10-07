@@ -2,7 +2,7 @@
 
 from . import long_period, spatial
 from ._version import __version__
-from .comparison import compare_intensity_methods
+from .comparison import compare_intensity_methods, compare_results
 from .duration import (
     amplitude_duration_curve,
     duration_sample_count,
@@ -42,8 +42,16 @@ from .filters import (
     realtime_filter_response,
 )
 from .measured import calculate_measured_intensity, measured_intensity
+from .methods import (
+    MethodDescriptor,
+    MethodStatus,
+    available_method_ids,
+    method_descriptor,
+)
 from .models import (
     AmplitudeDurationCurve,
+    ComparisonReport,
+    FieldDifference,
     FilterStage,
     FrequencyResponse,
     IntensityComparisonResult,
@@ -116,7 +124,9 @@ __all__ = [
     "AmplitudeDurationCurve",
     "ClippingInterval",
     "ClippingReport",
+    "ComparisonReport",
     "DataFormatError",
+    "FieldDifference",
     "FilterStage",
     "FractionalDurationWarning",
     "FrequencyResponse",
@@ -133,6 +143,8 @@ __all__ = [
     "LowRateGammaSet",
     "MeasuredIntensityResult",
     "MeasuredIntensityTiming",
+    "MethodDescriptor",
+    "MethodStatus",
     "MissingComponentWarning",
     "NonstandardProcessingWarning",
     "NonstandardSamplingRateWarning",
@@ -159,6 +171,7 @@ __all__ = [
     "apply_jma_filter_fft",
     "apply_strong_motion_displacement_filter",
     "apply_strong_motion_velocity_filter",
+    "available_method_ids",
     "calculate_measured_intensity",
     "calculate_realtime_intensity",
     "calculate_response_spectrum",
@@ -166,6 +179,7 @@ __all__ = [
     "classify_intensity",
     "classify_intensity_array",
     "compare_intensity_methods",
+    "compare_results",
     "component_peak_acceleration",
     "component_peak_displacement",
     "component_peak_velocity",
@@ -193,6 +207,7 @@ __all__ = [
     "lowrate_gamma_stability_margins",
     "lowrate_stability_lower_bounds",
     "measured_intensity",
+    "method_descriptor",
     "peak_ground_acceleration",
     "peak_ground_displacement",
     "peak_ground_velocity",

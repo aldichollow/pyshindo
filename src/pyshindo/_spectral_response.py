@@ -29,10 +29,13 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal as scipy_signal
 
+from ._immutable import frozen_array
 from .units import FloatArray
 
+_COEFFICIENT_FIELDS = ("a11", "a12", "a21", "a22", "b11", "b12", "b21", "b22")
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, eq=False)
 class OscillatorBank:
     """Linear-acceleration recurrence coefficients for a set of periods.
 
@@ -42,6 +45,10 @@ class OscillatorBank:
     motion and agree to about 1e-14 across the official long-period-class
     period grid, which also confirms that "線形加速度法" here means a
     first-order hold on the acceleration within each step.
+
+    Equality is disabled (``eq=False``) because every field but the two
+    scalars is an array; use :func:`pyshindo.comparison.compare_results`
+    instead.
     """
 
     periods_s: FloatArray
@@ -55,6 +62,13 @@ class OscillatorBank:
     b12: FloatArray
     b21: FloatArray
     b22: FloatArray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "periods_s", frozen_array(self.periods_s))
+        for coefficient_field in _COEFFICIENT_FIELDS:
+            object.__setattr__(
+                self, coefficient_field, frozen_array(getattr(self, coefficient_field))
+            )
 
     @property
     def period_count(self) -> int:

@@ -148,11 +148,54 @@ def report_intensity(value: float) -> float:
     return float(reported)
 
 
+_REPORT_LARGE_MAGNITUDE: Final = 1.0e15
+"""Above this, :func:`report_intensity` itself may raise (``Decimal`` context
+precision), so such elements are always sent through it individually rather
+than through the vectorized fast path below."""
+
+_REPORT_BOUNDARY_EPSILON: Final = 1e-6
+"""How close an element must be to an exact hundredths-place tie (an ``x.xy5``
+value) to be treated as one. :func:`report_intensity` resolves such ties from
+``str(value)`` -- the shortest decimal that round-trips to the same float --
+not from the binary value directly, so a plain vectorized round can disagree
+with it exactly at these points. The gap between genuinely distinct instrument
+readings is many orders of magnitude larger than this, so it only ever catches
+true ties (and float noise immediately around them)."""
+
+
 def report_intensity_array(values: npt.ArrayLike) -> FloatArray:
-    """Apply :func:`report_intensity` element by element to an array."""
+    """Apply :func:`report_intensity` to every element of an array.
+
+    Equivalent to, but much faster than, calling :func:`report_intensity` in a
+    Python loop: elements away from an exact hundredths-place tie are rounded
+    directly in NumPy, and only the rare element close to one (or outside the
+    range NumPy can round exactly) is still routed through the scalar
+    function, which remains the oracle for correctness.
+    """
     array = np.asarray(values, dtype=np.float64)
-    flat = np.fromiter((report_intensity(float(item)) for item in array.flat), dtype=np.float64)
-    return flat.reshape(array.shape)
+    result = np.empty_like(array)
+    finite = np.isfinite(array)
+    result[~finite] = array[~finite]
+
+    finite_values = array[finite]
+    sign = np.copysign(1.0, finite_values)
+    magnitude = np.abs(finite_values)
+
+    scaled_thousandths = magnitude * 1000.0
+    nearest_thousandth = np.round(scaled_thousandths)
+    near_tie = np.abs(scaled_thousandths - nearest_thousandth) < _REPORT_BOUNDARY_EPSILON
+    tie_at_five = np.mod(nearest_thousandth, 10.0) == 5.0
+    needs_exact_treatment = (magnitude > _REPORT_LARGE_MAGNITUDE) | (near_tie & tie_at_five)
+
+    rounded_hundredths = np.round(magnitude * 100.0) / 100.0
+    truncated_tenths = np.floor(rounded_hundredths * 10.0 + 1e-9) / 10.0
+    finite_result = sign * truncated_tenths
+
+    for index in np.flatnonzero(needs_exact_treatment):
+        finite_result[index] = report_intensity(float(finite_values[index]))
+
+    result[finite] = finite_result
+    return result
 
 
 def classify_intensity(value: float) -> IntensityScale:

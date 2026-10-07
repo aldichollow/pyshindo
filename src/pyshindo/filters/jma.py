@@ -14,18 +14,31 @@ import numpy as np
 import numpy.typing as npt
 from scipy import fft
 
+from .._immutable import frozen_array
 from ..units import AccelerationUnit, FloatArray, to_gal
 
+_COMPONENT_FIELDS = ("frequency_hz", "period_effect", "high_cut", "low_cut", "combined")
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, eq=False)
 class JMAFilterComponents:
-    """The three published amplitude-response factors and their product."""
+    """The three published amplitude-response factors and their product.
+
+    Equality is disabled (``eq=False``) because every field is an array;
+    use :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     frequency_hz: FloatArray
     period_effect: FloatArray
     high_cut: FloatArray
     low_cut: FloatArray
     combined: FloatArray
+
+    def __post_init__(self) -> None:
+        for component_field in _COMPONENT_FIELDS:
+            object.__setattr__(
+                self, component_field, frozen_array(getattr(self, component_field))
+            )
 
 
 def jma_filter_components(frequency_hz: npt.ArrayLike) -> JMAFilterComponents:
@@ -80,17 +93,26 @@ def jma_filter_response(frequency_hz: npt.ArrayLike) -> FloatArray:
     return jma_filter_components(frequency_hz).combined
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class JMAFilterResult:
     """Output of one FFT pass of the published JMA intensity filter.
 
     A dataclass rather than a bare tuple so that a future addition here does
-    not break unpacking at every call site.
+    not break unpacking at every call site. Equality is disabled
+    (``eq=False``) because every field is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
     """
 
     filtered_acceleration_gal: FloatArray
     frequency_hz: FloatArray
     response: FloatArray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "filtered_acceleration_gal", frozen_array(self.filtered_acceleration_gal)
+        )
+        object.__setattr__(self, "frequency_hz", frozen_array(self.frequency_hz))
+        object.__setattr__(self, "response", frozen_array(self.response))
 
 
 def apply_jma_filter_fft(

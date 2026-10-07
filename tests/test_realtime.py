@@ -80,18 +80,24 @@ def test_nonstandard_stable_rate_warns_but_calculates() -> None:
     assert captured
 
 
-def test_mutating_a_shared_filter_design_after_construction_is_isolated() -> None:
-    design = design_realtime_filter(100.0, filter_name="kunugi-2012")
+def test_two_estimators_built_from_separately_constructed_equal_designs_agree() -> None:
+    # filter_design.sos is read-only (see test_filters.py), so an estimator
+    # cannot be fooled by a caller mutating a shared design after
+    # construction -- that is no longer something to defend against, only
+    # something to confirm stays impossible. What is still worth checking:
+    # two estimators built from two independently designed (not shared)
+    # filters with identical parameters produce identical output.
     reference = RealtimeIntensityEstimator(
         100.0, filter_design=design_realtime_filter(100.0, filter_name="kunugi-2012")
     )
-    estimator = RealtimeIntensityEstimator(100.0, filter_design=design)
+    estimator = RealtimeIntensityEstimator(
+        100.0, filter_design=design_realtime_filter(100.0, filter_name="kunugi-2012")
+    )
     values = _record()[:500]
 
     reference_output = np.array(
         [reference.process_sample(sample).filtered_acceleration_gal for sample in values]
     )
-    design.sos[0, 0] *= 3.0  # mutate the caller's copy after the estimator was built
     chunk_output = estimator.process(values.copy()).filtered_acceleration_gal
 
     np.testing.assert_allclose(chunk_output, reference_output, rtol=1e-9, atol=1e-9)

@@ -1,0 +1,56 @@
+cff-version: 1.2.0
+message: "If you use pyshindo in research or other work, please cite it as below."
+title: "pyshindo: Reference and real-time algorithms for Japanese instrumental seismic intensity and strong-motion records"
+type: software
+authors:
+  - name: "pyshindo contributors"
+repository-code: "https://github.com/aldichollow/pyshindo"
+url: "https://pypi.org/project/pyshindo/"
+license: MIT
+version: 0.3.1
+date-released: "2026-09-26"
+keywords:
+  - earthquake
+  - instrumental-seismic-intensity
+  - seismic-intensity
+  - strong-motion
+  - long-period-ground-motion
+  - spectrum-intensity
+  - response-spectrum
+  - signal-processing
+  - real-time
+  - seismology
+  - obspy
+  - JMA
+preferred-citation:
+  type: software
+  title: "pyshindo: Reference and real-time algorithms for Japanese instrumental seismic intensity and strong-motion records"
+  authors:
+    - name: "pyshindo contributors"
+  repository-code: "https://github.com/aldichollow/pyshindo"
+  version: 0.3.1
+  date-released: "2026-09-26"
+references:
+  - type: article
+    title: "Behavior of Structures During Earthquakes"
+    authors:
+      - family-names: "Housner"
+        given-names: "G. W."
+    journal: "Journal of the Engineering Mechanics Division, ASCE"
+    volume: "85"
+    issue: "EM4"
+    start: "109"
+    end: "129"
+    year: 1959
+    notes: "Source for the spectrum intensity (SI) calculation in pyshindo.spectrum_intensity."
+  - type: article
+    title: "Strong motions observed by K-NET and KiK-net during the 2016 Kumamoto earthquake sequence"
+    authors:
+      - family-names: "Suzuki"
+        given-names: "Wataru"
+    journal: "Earth, Planets and Space"
+    volume: "69"
+    issue: "19"
+    year: 2017
+    doi: "10.1186/s40623-017-0604-8"
+    notes: "Source for IDWConfig.suzuki_2017_pga in pyshindo.spatial."

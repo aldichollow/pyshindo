@@ -16,6 +16,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.spatial import cKDTree
 
+from .._immutable import frozen_array
 from ._geometry import chord_to_great_circle_km, lonlat_to_unit_xyz
 from ._transform import forward_transform, inverse_transform
 from .models import (
@@ -31,9 +32,14 @@ from .validation import validate_station_coordinates, validate_values
 type FloatArray = npt.NDArray[np.float64]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class NearestPlan:
-    """A precomputed nearest-station assignment, reusable across many frames."""
+    """A precomputed nearest-station assignment, reusable across many frames.
+
+    Equality is disabled (``eq=False``) because every field but ``grid``,
+    ``station_count``, and ``config`` is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     grid: SurfaceGrid
     station_count: int
@@ -41,6 +47,11 @@ class NearestPlan:
     support_mask: npt.NDArray[np.bool_]
     nearest_distance_km: FloatArray
     config: NearestConfig
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "nearest_index", frozen_array(self.nearest_index))
+        object.__setattr__(self, "support_mask", frozen_array(self.support_mask))
+        object.__setattr__(self, "nearest_distance_km", frozen_array(self.nearest_distance_km))
 
     def interpolate(
         self,

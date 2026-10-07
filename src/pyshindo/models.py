@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,17 +11,27 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from ._immutable import frozen_array, frozen_mapping
 from .scale import IntensityScale
 from .signal import time_axis
 from .units import AccelerationUnit, FloatArray
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class FrequencyResponse:
-    """Complex filter response sampled at physical frequencies."""
+    """Complex filter response sampled at physical frequencies.
+
+    Equality is disabled (``eq=False``): the auto-generated comparison
+    would do ``a.frequency_hz == b.frequency_hz``, itself an array rather
+    than a bool. Use :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     frequency_hz: FloatArray
     response: npt.NDArray[np.complex128]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "frequency_hz", frozen_array(self.frequency_hz))
+        object.__setattr__(self, "response", frozen_array(self.response))
 
     @property
     def amplitude(self) -> FloatArray:
@@ -33,7 +44,7 @@ class FrequencyResponse:
         return np.unwrap(np.angle(self.response))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class FilterStage:
     """One named, individually inspectable component of a filter cascade.
 
@@ -43,33 +54,45 @@ class FilterStage:
     stage of a design, in order, reproduces that design's combined response --
     stages exist so each named component can be inspected or plotted on its own,
     not as an alternative way to filter data.
+
+    Equality is disabled (``eq=False``) because ``sos`` is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
     """
 
     name: str
     characteristic_frequency_hz: float | None
     sos: FloatArray
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sos", frozen_array(self.sos, dtype=np.float64))
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, eq=False)
 class RecursiveFilterDesign:
     """Second-order-section representation of a published approximation filter.
 
-    ``sos`` stays writable: :func:`scipy.signal.sosfilt` requires a mutable
-    buffer even though it only reads it. A design is meant to be treated as
-    immutable configuration all the same -- mutating ``sos`` after handing a
-    design to :class:`~pyshindo.realtime.RealtimeIntensityEstimator` is
-    unsupported, since the estimator takes its own private copy precisely to
-    stay correct if a caller does this.
+    A design is immutable configuration: ``sos`` is read-only, and
+    ``parameters`` is a read-only :class:`~types.MappingProxyType`.
+    :func:`scipy.signal.sosfilt` does need a mutable buffer, but nothing in
+    this package ever calls it with ``design.sos`` directly --
+    :class:`~pyshindo.realtime.RealtimeIntensityEstimator` always takes its
+    own private, independently writable copy first. Equality is disabled
+    (``eq=False``) because ``sos`` is an array; use
+    :func:`pyshindo.comparison.compare_results` instead.
     """
 
     name: str
     sampling_rate_hz: float
     sos: FloatArray
-    parameters: dict[str, float]
+    parameters: Mapping[str, float]
     characteristic_frequencies_hz: tuple[float, ...]
     max_pole_radius: float
     stable: bool
     stages: tuple[FilterStage, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sos", frozen_array(self.sos, dtype=np.float64))
+        object.__setattr__(self, "parameters", frozen_mapping(self.parameters))
 
     @property
     def nyquist_hz(self) -> float:
@@ -87,12 +110,24 @@ class RecursiveFilterDesign:
         return 1.0 - self.max_pole_radius
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class AmplitudeDurationCurve:
-    """Amplitude sorted from high to low and its cumulative exceedance duration."""
+    """Amplitude sorted from high to low and its cumulative exceedance duration.
+
+    Equality is disabled (``eq=False``) because both fields are arrays; use
+    :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     amplitude: FloatArray
     exceedance_duration_s: FloatArray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "amplitude", frozen_array(self.amplitude, dtype=np.float64))
+        object.__setattr__(
+            self,
+            "exceedance_duration_s",
+            frozen_array(self.exceedance_duration_s, dtype=np.float64),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,9 +144,15 @@ class MeasuredIntensityTiming:
     total_s: float
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class MeasuredIntensityResult:
-    """Detailed output of the frequency-domain reference calculation."""
+    """Detailed output of the frequency-domain reference calculation.
+
+    Equality is disabled (``eq=False``) because several fields are arrays;
+    use :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
+    """
 
     intensity_raw: float
     intensity: float
@@ -132,7 +173,24 @@ class MeasuredIntensityResult:
     frequency_hz: FloatArray | None
     filter_response: FloatArray | None
     reference_conditions_met: bool
-    timing: MeasuredIntensityTiming
+    timing: MeasuredIntensityTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "input_component_pga_gal", frozen_array(self.input_component_pga_gal)
+        )
+        object.__setattr__(
+            self, "filtered_component_pga_gal", frozen_array(self.filtered_component_pga_gal)
+        )
+        for optional_field in (
+            "filtered_acceleration_gal",
+            "resultant_acceleration_gal",
+            "frequency_hz",
+            "filter_response",
+        ):
+            value = getattr(self, optional_field)
+            if value is not None:
+                object.__setattr__(self, optional_field, frozen_array(value))
 
     @property
     def record_duration_s(self) -> float:
@@ -160,9 +218,15 @@ class RealtimeChunkTiming:
     total_s: float
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RealtimeIntensityResult:
-    """Detailed output of a batch replay of the real-time algorithm."""
+    """Detailed output of a batch replay of the real-time algorithm.
+
+    Equality is disabled (``eq=False``) because several fields are arrays;
+    use :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
+    """
 
     intensity_raw: FloatArray
     intensity: FloatArray
@@ -181,7 +245,23 @@ class RealtimeIntensityResult:
     approximate_intensity_raw: float
     approximate_intensity: float
     approximate_scale: IntensityScale | None
-    timing: RealtimeChunkTiming
+    timing: RealtimeChunkTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        for required_field in (
+            "intensity_raw",
+            "intensity",
+            "threshold_acceleration_gal",
+            "resultant_acceleration_gal",
+            "record_max_intensity_raw",
+            "input_component_pga_gal",
+            "filtered_component_pga_gal",
+        ):
+            object.__setattr__(self, required_field, frozen_array(getattr(self, required_field)))
+        if self.filtered_acceleration_gal is not None:
+            object.__setattr__(
+                self, "filtered_acceleration_gal", frozen_array(self.filtered_acceleration_gal)
+            )
 
     @property
     def sample_count(self) -> int:
@@ -235,9 +315,15 @@ class RealtimeIntensityResult:
         return np.nan if index is None else float(self.threshold_acceleration_gal[index])
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RealtimeChunk:
-    """Outputs produced from one streaming input chunk."""
+    """Outputs produced from one streaming input chunk.
+
+    Equality is disabled (``eq=False``) because several fields are arrays;
+    use :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
+    """
 
     sample_index: npt.NDArray[np.int64]
     time_s: FloatArray
@@ -247,12 +333,29 @@ class RealtimeChunk:
     intensity_raw: FloatArray
     intensity: FloatArray
     record_max_intensity_raw: FloatArray
-    timing: RealtimeChunkTiming
+    timing: RealtimeChunkTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sample_index", frozen_array(self.sample_index, dtype=np.int64))
+        for required_field in (
+            "time_s",
+            "filtered_acceleration_gal",
+            "resultant_acceleration_gal",
+            "threshold_acceleration_gal",
+            "intensity_raw",
+            "intensity",
+            "record_max_intensity_raw",
+        ):
+            object.__setattr__(self, required_field, frozen_array(getattr(self, required_field)))
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RealtimeSample:
-    """Low-allocation scalar output produced for one streaming sample."""
+    """Low-allocation scalar output produced for one streaming sample.
+
+    Equality is disabled (``eq=False``) because ``filtered_acceleration_gal``
+    is an array; use :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     sample_index: int
     time_s: float
@@ -264,6 +367,11 @@ class RealtimeSample:
     scale: IntensityScale | None
     record_max_intensity_raw: float | None
     elapsed_s: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "filtered_acceleration_gal", frozen_array(self.filtered_acceleration_gal)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,12 +421,19 @@ class JMARecordMetadata:
         return AccelerationUnit.parse(self.unit)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class JMARecord:
-    """A parsed JMA acceleration record."""
+    """A parsed JMA acceleration record.
+
+    Equality is disabled (``eq=False``) because ``acceleration`` is an
+    array; use :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     metadata: JMARecordMetadata
     acceleration: FloatArray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "acceleration", frozen_array(self.acceleration))
 
     @property
     def time_s(self) -> FloatArray:
@@ -339,7 +454,10 @@ class DownloadedRecord:
     url: str
     byte_count: int
     sha256: str
-    headers: dict[str, Any]
+    headers: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "headers", frozen_mapping(self.headers))
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,12 +486,19 @@ class ObsPyRecordMetadata:
         return AccelerationUnit.parse(self.unit)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ObsPyRecord:
-    """An acceleration record converted from an ObsPy stream."""
+    """An acceleration record converted from an ObsPy stream.
+
+    Equality is disabled (``eq=False``) because ``acceleration`` is an
+    array; use :func:`pyshindo.comparison.compare_results` instead.
+    """
 
     metadata: ObsPyRecordMetadata
     acceleration: FloatArray
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "acceleration", frozen_array(self.acceleration))
 
     @property
     def time_s(self) -> FloatArray:
@@ -384,3 +509,39 @@ class ObsPyRecord:
     def duration_s(self) -> float:
         """Return sample count divided by sampling rate."""
         return self.acceleration.shape[0] / self.metadata.sampling_rate_hz
+
+
+@dataclass(frozen=True, slots=True)
+class FieldDifference:
+    """One field where two results compared by :func:`~pyshindo.comparison.compare_results`
+    disagree.
+    """
+
+    field_name: str
+    reason: str
+    max_absolute_error: float | None = None
+    max_relative_error: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ComparisonReport:
+    """The outcome of :func:`pyshindo.comparison.compare_results`.
+
+    Truthy exactly when ``equal`` is, so ``if compare_results(a, b):`` reads
+    naturally; ``str()`` lists every differing field, for an assertion
+    message or a printed diagnostic.
+    """
+
+    equal: bool
+    differences: tuple[FieldDifference, ...]
+
+    def __bool__(self) -> bool:
+        return self.equal
+
+    def __str__(self) -> str:
+        if self.equal:
+            return "ComparisonReport: equal"
+        lines = [f"ComparisonReport: {len(self.differences)} field(s) differ"]
+        for difference in self.differences:
+            lines.append(f"  {difference.field_name}: {difference.reason}")
+        return "\n".join(lines)

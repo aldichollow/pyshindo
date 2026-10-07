@@ -49,11 +49,12 @@ its coefficients.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import numpy.typing as npt
 
+from ._immutable import frozen_array
 from ._spectral_response import (
     design_oscillator_bank,
     relative_displacement_response,
@@ -75,7 +76,7 @@ class ResponseSpectrumTiming:
     total_s: float
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ResponseSpectrumResult:
     """Detailed output of the general elastic response spectrum calculation.
 
@@ -89,6 +90,11 @@ class ResponseSpectrumResult:
     ``sv_time_series_cm_s`` are the much larger full per-sample responses,
     ``(samples, periods, components)``, each kept only when its own
     ``retain_*_time_series`` flag was set.
+
+    Equality is disabled (``eq=False``) because several fields are arrays;
+    use :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
     """
 
     sd_cm: FloatArray
@@ -102,7 +108,15 @@ class ResponseSpectrumResult:
     component_count: int
     sd_time_series_cm: FloatArray | None
     sv_time_series_cm_s: FloatArray | None
-    timing: ResponseSpectrumTiming
+    timing: ResponseSpectrumTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        for required_field in ("sd_cm", "sv_cm_s", "psv_cm_s", "psa_gal", "periods_s"):
+            object.__setattr__(self, required_field, frozen_array(getattr(self, required_field)))
+        for optional_field in ("sd_time_series_cm", "sv_time_series_cm_s"):
+            value = getattr(self, optional_field)
+            if value is not None:
+                object.__setattr__(self, optional_field, frozen_array(value))
 
     @property
     def record_duration_s(self) -> float:

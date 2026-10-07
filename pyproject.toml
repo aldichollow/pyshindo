@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyshindo"
-version = "0.3.1"
-description = "Reference and real-time algorithms for Japanese instrumental seismic intensity"
+dynamic = ["version"]
+description = "Reference and real-time algorithms for Japanese instrumental seismic intensity and strong-motion records"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.12"
 license = "MIT"
@@ -17,8 +17,14 @@ keywords = [
   "earthquake",
   "instrumental-seismic-intensity",
   "seismic-intensity",
+  "strong-motion",
+  "long-period-ground-motion",
+  "spectrum-intensity",
+  "response-spectrum",
   "signal-processing",
   "real-time",
+  "seismology",
+  "obspy",
   "JMA",
 ]
 classifiers = [
@@ -59,6 +65,9 @@ dev = [
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "pyshindo._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

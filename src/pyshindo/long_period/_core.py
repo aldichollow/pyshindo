@@ -49,6 +49,7 @@ import numpy as np
 from scipy import signal as scipy_signal
 from scipy.integrate import cumulative_trapezoid
 
+from .._immutable import frozen_array
 from .._spectral_response import (
     OscillatorBank,
     seed_relative_velocity,
@@ -75,7 +76,7 @@ _HPF_PROTOTYPE_DAMPING: Final = 0.7071067811865476  # 1/sqrt(2)
 _HPF_PROTOTYPE_OMEGA_N: Final = 0.322544346015  # rad/s, period 19.480066 s
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class HighPassDesign:
     """Second-order high-pass recurrence in SciPy ``lfilter`` form.
 
@@ -83,6 +84,12 @@ class HighPassDesign:
     JMA document calls ``y``; the filtered acceleration is ``gain * y``. The
     scaling is kept separate rather than folded into ``numerator`` so the
     stored state is exactly the document's ``y``.
+
+    Equality is disabled (``eq=False``) because ``numerator``/``denominator``
+    are arrays; use :func:`pyshindo.comparison.compare_results` instead.
+    Both are read-only: :func:`scipy.signal.lfilter` does take a mutable
+    buffer, but only for its ``zi`` state argument, never for the ``b``/``a``
+    coefficients these two fields supply.
     """
 
     numerator: FloatArray
@@ -90,6 +97,10 @@ class HighPassDesign:
     gain: float
     sampling_rate_hz: float
     is_published_reference: bool
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "numerator", frozen_array(self.numerator))
+        object.__setattr__(self, "denominator", frozen_array(self.denominator))
 
 
 def design_high_pass(sampling_rate_hz: float) -> HighPassDesign:
