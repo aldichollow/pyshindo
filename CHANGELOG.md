@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.2 - 2026-10-07
+
+Added:
+
+- `pyshindo.methods` -- `method_descriptor`/`available_method_ids` classify each algorithm as a reference method, a published approximation, a package extension, or a general engineering method, with its primary references and deviations.
+- `compare_results` -- field-by-field comparison for any two result objects (or filter designs), honoring `rtol`/`atol` and skipping non-comparable fields such as timing.
+- `CITATION.cff` and `docs/scope.md` (what the package covers, what it deliberately does not, and its actual API-stability practice).
+
+Changed (breaking):
+
+- Every result and filter-design dataclass with an array or dict field now freezes it read-only after construction; mutating one in place (for example `result.some_array[0] = x`) now raises `ValueError` instead of silently succeeding.
+- The same dataclasses' auto-generated `==` (which raised `ValueError` for any array field) is disabled; use `compare_results` instead.
+
+Fixed:
+
+- `report_intensity_array` is substantially faster on large arrays, with no change in output.
+
 ## 0.3.1 - 2026-09-26
 
 Added:
