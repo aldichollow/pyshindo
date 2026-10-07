@@ -9,7 +9,7 @@
 
 `pyshindo` は加速度から気象庁の計測震度を計算するPythonパッケージです。記録全体を使うFFT参照計算(計測震度)と、逐次入力向けの因果的リアルタイム近似を明確に分離しているのが特徴です。気象庁の公開計算式、Kunugi et al. (2008, 2013)、および関連特許(JP4229337B2 / JP5946067B2 / JP7681907B2)に基づき、係数は固定表を転記するのではなく式から都度導出しています。リアルタイム側は直近60秒の閾値をヒストグラム丸めなしの厳密な順序統計量で保持し、逐次入力(`process_sample`)と一括入力(`process`)のどちらでも同じ結果になるよう作られています。
 
-計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位。いずれも気象庁が定義・公表している量です)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。
+計測震度に加えて、長周期地震動階級、PGV・PGD(最大速度・最大変位。いずれも気象庁が定義・公表している量です)、SI値(Housnerのスペクトル強度)も算出できます。長周期地震動階級は気象庁が公開している絶対速度応答スペクトルと照合し、2地震・268観測点で全ての階級が一致、応答スペクトル自体も最大値で1e-05程度、検証した観測点のうち最も悪いところで1.7e-05の水準で一致することを確認しています。ObsPy連携を使えば、K-NET・KiK-net・miniSEED・SACなどObsPyが読める形式をそのまま入力にできます。`pyshindo.spatial`では観測点間の値をIDW・Delaunay線形・最近傍で補間し、陸地のみの地図レイヤーとして描画することもできます(追加の依存関係なし)。
 
 詳細なアルゴリズム解説は日本語で [`docs/algorithm.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/algorithm.md)(計測震度)と [`docs/long-period.md`](https://github.com/aldichollow/pyshindo/blob/main/docs/long-period.md)(長周期地震動階級)にあります。
 
@@ -36,6 +36,7 @@ The package targets Python 3.12 or later. It is a research and engineering refer
 - A general elastic response spectrum (`calculate_response_spectrum`): relative displacement, relative velocity, pseudo-velocity, and pseudo-acceleration for any damping ratio and period grid, sharing the same oscillator solver as the long-period class and SI value without either one's own conventions baked in.
 - `detect_clipping`: a diagnostic-only check for saturated samples, by a known digitizer range and/or a run of repeated values near a component's own peak. Never applied automatically.
 - Optional ObsPy interoperability (`pyshindo[obspy]`): convert a stream that ObsPy already read -- K-NET, KiK-net, miniSEED, SAC -- into the arrays used here, without reimplementing any reader.
+- `pyshindo.spatial`: interpolates station observations (PGV, PGA, measured intensity, or any continuous value) onto a grid with inverse-distance weighting, Delaunay-linear, or nearest-neighbor methods, and renders the result as a land-only map layer under station markers (`pyshindo.plotting.surfaces`). NumPy/SciPy only, no new dependency for either.
 - Each causal filter's named analog factors (`RecursiveFilterDesign.stages`) can be inspected or plotted individually, not just as a combined response.
 - Built-in wall-clock timing: every result carries a `timing` field (or, for `process_sample`, `elapsed_s`) measured with `time.perf_counter`, so callers can inspect calculation cost without wrapping their own timer.
 
