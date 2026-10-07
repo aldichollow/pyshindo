@@ -6,8 +6,9 @@ which already carries filter designs, intensity results, and record I/O.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from .._immutable import frozen_array
 from ..units import FloatArray
 from .scale import LongPeriodClass
 
@@ -41,9 +42,16 @@ class LongPeriodBandResult:
         return f"{self.band_second}秒台"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class LongPeriodResult:
-    """Detailed output of the long-period ground motion class calculation."""
+    """Detailed output of the long-period ground motion class calculation.
+
+    Equality is disabled (``eq=False``) because ``sva_cm_s``, ``periods_s``,
+    and ``absolute_velocity_time_series_cm_s`` are arrays; use
+    :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
+    """
 
     sva_cm_s: FloatArray
     periods_s: FloatArray
@@ -58,7 +66,17 @@ class LongPeriodResult:
     high_pass_applied: bool
     reference_conditions_met: bool
     absolute_velocity_time_series_cm_s: FloatArray | None
-    timing: LongPeriodTiming
+    timing: LongPeriodTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "sva_cm_s", frozen_array(self.sva_cm_s))
+        object.__setattr__(self, "periods_s", frozen_array(self.periods_s))
+        if self.absolute_velocity_time_series_cm_s is not None:
+            object.__setattr__(
+                self,
+                "absolute_velocity_time_series_cm_s",
+                frozen_array(self.absolute_velocity_time_series_cm_s),
+            )
 
     @property
     def record_duration_s(self) -> float:

@@ -44,13 +44,14 @@ to in practice (whole or tenths of cm/s).
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 import numpy as np
 import numpy.typing as npt
 from scipy.integrate import trapezoid
 
+from ._immutable import frozen_array
 from ._spectral_response import OscillatorBank, design_oscillator_bank, relative_velocity_response
 from .exceptions import InvalidAccelerationError
 from .units import AccelerationUnit, ArrayLike, FloatArray, to_gal
@@ -83,7 +84,7 @@ class SpectrumIntensityTiming:
     total_s: float
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class SpectrumIntensityResult:
     """Detailed output of the spectrum intensity calculation.
 
@@ -93,6 +94,11 @@ class SpectrumIntensityResult:
     response-spectrum plot needs. ``sv_time_series_cm_s`` is the much larger
     full per-sample response, ``(samples, periods, components)``, kept only
     when ``retain_velocity_time_series`` was set.
+
+    Equality is disabled (``eq=False``) because several fields are arrays;
+    use :func:`pyshindo.comparison.compare_results` instead. ``timing`` is
+    excluded from that comparison (``compare=False``) since wall-clock
+    timing is never the same between two runs even given identical input.
     """
 
     si_cm_s: FloatArray
@@ -103,7 +109,16 @@ class SpectrumIntensityResult:
     sample_count: int
     component_count: int
     sv_time_series_cm_s: FloatArray | None
-    timing: SpectrumIntensityTiming
+    timing: SpectrumIntensityTiming = field(compare=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "si_cm_s", frozen_array(self.si_cm_s))
+        object.__setattr__(self, "sv_cm_s", frozen_array(self.sv_cm_s))
+        object.__setattr__(self, "periods_s", frozen_array(self.periods_s))
+        if self.sv_time_series_cm_s is not None:
+            object.__setattr__(
+                self, "sv_time_series_cm_s", frozen_array(self.sv_time_series_cm_s)
+            )
 
     @property
     def record_duration_s(self) -> float:
@@ -191,19 +206,25 @@ def calculate_spectrum_intensity(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class SpectrumIntensityUpdate:
     """Cumulative state after one streaming chunk or sample.
 
     The values are the exact complete-record ``Sv``/SI for the part of the
     record seen so far, not a rolling window -- see
     :class:`SpectrumIntensityEstimator` for why.
+
+    Equality is disabled (``eq=False``) because ``si_so_far_cm_s`` is an
+    array; use :func:`pyshindo.comparison.compare_results` instead.
     """
 
     sample_index: int
     sample_count: int
     si_so_far_cm_s: FloatArray
     elapsed_s: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "si_so_far_cm_s", frozen_array(self.si_so_far_cm_s))
 
 
 class SpectrumIntensityEstimator:
