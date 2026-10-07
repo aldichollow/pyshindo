@@ -256,6 +256,7 @@ Plotly figures use a restrained package theme. Intensity colors 1 through 7 foll
 
 ## Documentation
 
+- [Scope: what this package does and does not cover (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/scope.md)
 - [Algorithm guide (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/algorithm.md)
 - [API reference (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/api.md)
 - [Long-period ground motion class (Japanese)](https://github.com/aldichollow/pyshindo/blob/main/docs/long-period.md)
